@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io' show Platform;
 import 'package:uuid/uuid.dart';
 import '../../services/api/endpoints.dart';
+import '../../services/product_sync_service.dart';
 import '../../utils/constants.dart';
 import '../../config/theme.dart';
 import '../../config/app_config.dart';
@@ -114,6 +115,17 @@ class _PairingScreenState extends State<PairingScreen> {
       print('Device ID: $deviceIdToSave');
       print('Tenant ID: $tenantIdToSave');
       print('Token saved: ${result['device_token'] != null}');
+
+      // Trigger initial product sync
+      print('Starting initial product sync...');
+      try {
+        final productSync = ProductSyncService();
+        await productSync.initialSync();
+        print('✅ Initial product sync completed');
+      } catch (syncError) {
+        print('⚠️ Initial sync failed: $syncError');
+        // Don't block pairing if sync fails - user can retry later
+      }
 
       if (mounted) {
         // Pairing successful, navigate directly to cashier screen

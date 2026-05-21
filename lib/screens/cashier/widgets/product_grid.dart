@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../models/product.dart';
 import '../../../config/theme.dart';
+import '../../../providers/product_provider.dart';
 import '../providers/cart_provider.dart';
 
 class ProductGrid extends ConsumerWidget {
@@ -16,48 +17,92 @@ class ProductGrid extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // TODO: Replace with actual product data from provider
-    final products = _getDummyProducts();
+    // Load products from database using provider
+    final productsAsync = searchQuery.isEmpty
+        ? ref.watch(productsProvider)
+        : ref.watch(filteredProductsProvider(searchQuery));
 
     return Container(
       padding: const EdgeInsets.all(16),
-      child: GridView.builder(
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 4,
-          childAspectRatio: 0.75,
-          crossAxisSpacing: 16,
-          mainAxisSpacing: 16,
-        ),
-        itemCount: products.length,
-        itemBuilder: (context, index) {
-          final product = products[index];
-          return ProductCard(product: product);
+      child: productsAsync.when(
+        data: (products) {
+          if (products.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.inventory_2_outlined,
+                    size: 64,
+                    color: AppTheme.textSecondaryDark.withOpacity(0.5),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    searchQuery.isEmpty
+                        ? 'No products available'
+                        : 'No products found for "$searchQuery"',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: AppTheme.textSecondaryDark,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          return GridView.builder(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 4,
+              childAspectRatio: 0.75,
+              crossAxisSpacing: 16,
+              mainAxisSpacing: 16,
+            ),
+            itemCount: products.length,
+            itemBuilder: (context, index) {
+              final product = products[index];
+              return ProductCard(product: product);
+            },
+          );
         },
+        loading: () => const Center(
+          child: CircularProgressIndicator(
+            color: AppTheme.primaryColor,
+          ),
+        ),
+        error: (error, stack) => Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.error_outline,
+                size: 64,
+                color: AppTheme.errorColor.withOpacity(0.5),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Error loading products',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: AppTheme.textSecondaryDark,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                error.toString(),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppTheme.textSecondaryDark.withOpacity(0.7),
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  List<Product> _getDummyProducts() {
-    // Dummy data for demonstration
-    return List.generate(
-      20,
-      (index) => Product(
-        id: 'prod_$index',
-        tenantId: 'tenant_1',
-        name: 'Product ${index + 1}',
-        description: 'Description for product ${index + 1}',
-        barcode: '123456789${index.toString().padLeft(3, '0')}',
-        price: (index + 1) * 10.0,
-        costPrice: (index + 1) * 5.0,
-        taxType: 'SST',
-        taxRate: 0.06,
-        stockQuantity: 100 - index,
-        isActive: true,
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-      ),
-    );
-  }
 }
 
 class ProductCard extends ConsumerWidget {
