@@ -82,9 +82,10 @@ class ProductApi {
   final ApiService _apiService = ApiService.instance;
 
   // Get products
-  Future<List<Map<String, dynamic>>> getProducts({
+  Future<Map<String, dynamic>> getProducts({
     String? search,
     String? barcode,
+    DateTime? updatedSince,
     int? page,
     int? limit,
   }) async {
@@ -93,12 +94,16 @@ class ProductApi {
       queryParameters: {
         if (search != null) 'search': search,
         if (barcode != null) 'barcode': barcode,
+        if (updatedSince != null) 'updated_since': updatedSince.toIso8601String(),
         if (page != null) 'page': page,
         if (limit != null) 'limit': limit,
       },
     );
 
-    return List<Map<String, dynamic>>.from(response.data['data']);
+    return {
+      'data': response.data['data'],
+      'pagination': response.data['pagination'],
+    };
   }
 
   // Create product
