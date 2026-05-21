@@ -273,20 +273,7 @@ class DatabaseService {
 
     if (oldVersion < 2) {
       // Update products table schema for API sync in version 2
-      // Add new columns
-      await db.execute('''
-        ALTER TABLE products ADD COLUMN tenant_id TEXT NOT NULL DEFAULT ''
-      ''');
-
-      await db.execute('''
-        ALTER TABLE products ADD COLUMN deleted_at INTEGER
-      ''');
-
-      await db.execute('''
-        ALTER TABLE products ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0
-      ''');
-
-      // Rename price to unit_price (SQLite doesn't support RENAME COLUMN directly)
+      // Rename price to unit_price and add new columns (tenant_id, deleted_at, created_at)
       // Create new table with correct schema
       await db.execute('''
         CREATE TABLE products_new (
@@ -311,7 +298,7 @@ class DatabaseService {
         )
       ''');
 
-      // Copy data from old table to new table
+      // Copy data from old table to new table with defaults for new columns
       await db.execute('''
         INSERT INTO products_new (
           id, tenant_id, name, description, barcode, unit_price, cost_price,
@@ -319,9 +306,10 @@ class DatabaseService {
           expiry_date, image_url, is_active, deleted_at, created_at, updated_at
         )
         SELECT
-          id, tenant_id, name, description, barcode, price, cost_price,
+          id, '', name, description, barcode, price, cost_price,
           tax_type, tax_rate, stock_quantity, reorder_level, batch_number,
-          expiry_date, image_url, is_active, deleted_at, created_at, updated_at
+          expiry_date, image_url, is_active, NULL,
+          ${DateTime.now().millisecondsSinceEpoch}, updated_at
         FROM products
       ''');
 
