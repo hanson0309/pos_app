@@ -222,7 +222,6 @@ class ProductSyncService {
 
     // Use SQLite for native platforms
     final db = await _db.database;
-    final db = await _db.database;
     final results = await db.query(
       'products',
       where: 'barcode = ? AND is_active = ?',
