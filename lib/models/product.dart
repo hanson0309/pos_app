@@ -13,6 +13,8 @@ class Product {
   final String name;
   final String? description;
   final String? barcode;
+
+  @JsonKey(name: 'unit_price')
   final double price;
 
   @JsonKey(name: 'cost_price')
