@@ -8,13 +8,9 @@ class EscPosGenerator {
   /// 纸张宽度（字符数）
   final PaperSize paperSize;
 
-  /// 字符编码
-  final CapabilityProfile profile;
-
   EscPosGenerator({
     this.paperSize = PaperSize.mm58,
-    CapabilityProfile? profile,
-  }) : profile = profile ?? (CapabilityProfile.load() as CapabilityProfile);
+  });
 
   /// 生成收据打印指令
   ///
@@ -49,6 +45,8 @@ class EscPosGenerator {
     String? customerName,
     String? cashierName,
   }) async {
+    // 异步加载 CapabilityProfile
+    final profile = await CapabilityProfile.load();
     final Generator generator = Generator(paperSize, profile);
     final List<int> bytes = [];
 
