@@ -59,10 +59,11 @@ class DatabaseService {
     await db.execute('''
       CREATE TABLE products (
         id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
         name TEXT NOT NULL,
         description TEXT,
         barcode TEXT,
-        price REAL NOT NULL,
+        unit_price REAL NOT NULL,
         cost_price REAL,
         tax_type TEXT NOT NULL,
         tax_rate REAL NOT NULL,
@@ -72,13 +73,27 @@ class DatabaseService {
         expiry_date INTEGER,
         image_url TEXT,
         is_active INTEGER DEFAULT 1,
+        deleted_at INTEGER,
+        created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       )
     ''');
 
-    // Create index on barcode
+    // Create indexes on products table
     await db.execute('''
       CREATE INDEX idx_products_barcode ON products(barcode)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX idx_products_updated_at ON products(updated_at)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX idx_products_name ON products(name)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX idx_products_is_active ON products(is_active)
     ''');
 
     // Customers Table
@@ -253,6 +268,84 @@ class DatabaseService {
 
       await db.execute('''
         CREATE INDEX idx_print_queue_status ON print_queue(status)
+      ''');
+    }
+
+    if (oldVersion < 3) {
+      // Update products table schema for API sync in version 3
+      // Add new columns
+      await db.execute('''
+        ALTER TABLE products ADD COLUMN tenant_id TEXT NOT NULL DEFAULT ''
+      ''');
+
+      await db.execute('''
+        ALTER TABLE products ADD COLUMN deleted_at INTEGER
+      ''');
+
+      await db.execute('''
+        ALTER TABLE products ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0
+      ''');
+
+      // Rename price to unit_price (SQLite doesn't support RENAME COLUMN directly)
+      // Create new table with correct schema
+      await db.execute('''
+        CREATE TABLE products_new (
+          id TEXT PRIMARY KEY,
+          tenant_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          description TEXT,
+          barcode TEXT,
+          unit_price REAL NOT NULL,
+          cost_price REAL,
+          tax_type TEXT NOT NULL,
+          tax_rate REAL NOT NULL,
+          stock_quantity INTEGER DEFAULT 0,
+          reorder_level INTEGER,
+          batch_number TEXT,
+          expiry_date INTEGER,
+          image_url TEXT,
+          is_active INTEGER DEFAULT 1,
+          deleted_at INTEGER,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        )
+      ''');
+
+      // Copy data from old table to new table
+      await db.execute('''
+        INSERT INTO products_new (
+          id, tenant_id, name, description, barcode, unit_price, cost_price,
+          tax_type, tax_rate, stock_quantity, reorder_level, batch_number,
+          expiry_date, image_url, is_active, deleted_at, created_at, updated_at
+        )
+        SELECT
+          id, tenant_id, name, description, barcode, price, cost_price,
+          tax_type, tax_rate, stock_quantity, reorder_level, batch_number,
+          expiry_date, image_url, is_active, deleted_at, created_at, updated_at
+        FROM products
+      ''');
+
+      // Drop old table
+      await db.execute('DROP TABLE products');
+
+      // Rename new table to products
+      await db.execute('ALTER TABLE products_new RENAME TO products');
+
+      // Recreate indexes
+      await db.execute('''
+        CREATE INDEX idx_products_barcode ON products(barcode)
+      ''');
+
+      await db.execute('''
+        CREATE INDEX idx_products_updated_at ON products(updated_at)
+      ''');
+
+      await db.execute('''
+        CREATE INDEX idx_products_name ON products(name)
+      ''');
+
+      await db.execute('''
+        CREATE INDEX idx_products_is_active ON products(is_active)
       ''');
     }
   }
