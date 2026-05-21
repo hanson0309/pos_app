@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:sqflite/sqflite.dart';
 import '../models/product.dart';
@@ -8,6 +9,10 @@ class ProductSyncService {
   final DatabaseService _db = DatabaseService.instance;
   final ProductApi _api = ProductApi();
   final _storage = const FlutterSecureStorage();
+
+  // In-memory cache for Web platform
+  static List<Product> _cachedProducts = [];
+  static DateTime? _lastSyncTime;
 
   static const String _lastSyncKey = 'last_product_sync';
 
@@ -101,6 +106,22 @@ class ProductSyncService {
   }
 
   Future<void> _saveProductsToLocal(List<dynamic> products) async {
+    if (kIsWeb) {
+      // Use in-memory cache for Web platform
+      print('Using in-memory cache for Web platform');
+      for (final productJson in products) {
+        final product = Product.fromJson(productJson);
+        // Remove existing product with same ID
+        _cachedProducts.removeWhere((p) => p.id == product.id);
+        // Add new/updated product
+        _cachedProducts.add(product);
+      }
+      _lastSyncTime = DateTime.now();
+      print('Cached ${_cachedProducts.length} products in memory');
+      return;
+    }
+
+    // Use SQLite for native platforms
     final db = await _db.database;
 
     await db.transaction((txn) async {
@@ -139,6 +160,28 @@ class ProductSyncService {
     String? search,
     bool activeOnly = true,
   }) async {
+    if (kIsWeb) {
+      // Use in-memory cache for Web platform
+      var products = _cachedProducts;
+
+      if (activeOnly) {
+        products = products.where((p) => p.isActive).toList();
+      }
+
+      if (search != null && search.isNotEmpty) {
+        final searchLower = search.toLowerCase();
+        products = products.where((p) {
+          return p.name.toLowerCase().contains(searchLower) ||
+              (p.description?.toLowerCase().contains(searchLower) ?? false) ||
+              (p.barcode?.toLowerCase().contains(searchLower) ?? false);
+        }).toList();
+      }
+
+      products.sort((a, b) => a.name.compareTo(b.name));
+      return products;
+    }
+
+    // Use SQLite for native platforms
     final db = await _db.database;
     String where = '';
     List<dynamic> whereArgs = [];
@@ -166,6 +209,19 @@ class ProductSyncService {
   }
 
   Future<Product?> findByBarcode(String barcode) async {
+    if (kIsWeb) {
+      // Use in-memory cache for Web platform
+      try {
+        return _cachedProducts.firstWhere(
+          (p) => p.barcode == barcode && p.isActive,
+        );
+      } catch (e) {
+        return null;
+      }
+    }
+
+    // Use SQLite for native platforms
+    final db = await _db.database;
     final db = await _db.database;
     final results = await db.query(
       'products',
