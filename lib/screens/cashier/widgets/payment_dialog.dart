@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../config/theme.dart';
+import '../../../models/transaction.dart';
+import '../../../models/receipt.dart';
+import '../../../services/transaction_service.dart';
+import '../providers/cart_provider.dart';
 import 'payment_success_dialog.dart';
 
-class PaymentDialog extends StatefulWidget {
+class PaymentDialog extends ConsumerStatefulWidget {
   final double totalAmount;
   final VoidCallback onPaymentComplete;
 
@@ -14,14 +19,17 @@ class PaymentDialog extends StatefulWidget {
   });
 
   @override
-  State<PaymentDialog> createState() => _PaymentDialogState();
+  ConsumerState<PaymentDialog> createState() => _PaymentDialogState();
 }
 
-class _PaymentDialogState extends State<PaymentDialog> {
+class _PaymentDialogState extends ConsumerState<PaymentDialog> {
   String _selectedPaymentMethod = 'cash';
   final TextEditingController _amountController = TextEditingController();
   double _receivedAmount = 0;
   double _changeAmount = 0;
+  bool _isProcessing = false;
+
+  final _transactionService = TransactionService.instance;
 
   @override
   void initState() {
@@ -43,31 +51,135 @@ class _PaymentDialogState extends State<PaymentDialog> {
     });
   }
 
-  void _processPayment() {
+  void _processPayment() async {
     if (_selectedPaymentMethod == 'cash' && _changeAmount < 0) {
       _showError('Insufficient amount received');
       return;
     }
 
-    // Close payment dialog
-    Navigator.of(context).pop(true);
+    setState(() {
+      _isProcessing = true;
+    });
 
-    // Show success dialog
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => PaymentSuccessDialog(
-        transactionNumber: 'TXN${DateTime.now().millisecondsSinceEpoch}',
-        totalAmount: widget.totalAmount,
-        changeAmount: _changeAmount,
+    try {
+      // Get cart items
+      final cartNotifier = ref.read(cartProvider.notifier);
+      final cartItems = ref.read(cartProvider);
+
+      if (cartItems.isEmpty) {
+        _showError('Cart is empty');
+        setState(() {
+          _isProcessing = false;
+        });
+        return;
+      }
+
+      // Convert cart items to transaction items
+      final transactionItems = cartItems.map((cartItem) {
+        final taxRate = 0.06; // 6% SST
+        final lineSubtotal = cartItem.product.price * cartItem.quantity;
+        final lineTax = lineSubtotal * taxRate;
+        final lineTotal = lineSubtotal + lineTax;
+
+        return TransactionItem(
+          productId: cartItem.product.id ?? 'unknown',
+          description: cartItem.product.name,
+          quantity: cartItem.quantity,
+          unitPrice: cartItem.product.price,
+          taxType: 'SST',
+          taxRate: taxRate,
+          taxAmount: lineTax,
+          lineTotal: lineTotal,
+        );
+      }).toList();
+
+      // Calculate totals
+      final subtotal = cartNotifier.subtotal;
+      final discount = cartNotifier.discountAmount;
+      final taxableAmount = subtotal - discount;
+      final taxAmount = taxableAmount * 0.06;
+      final totalAmount = taxableAmount + taxAmount;
+
+      // Process payment and create invoice
+      final result = await _transactionService.processPayment(
+        items: transactionItems,
+        customerId: null, // TODO: Get from customer selection
+        subtotal: subtotal,
+        taxAmount: taxAmount,
+        totalAmount: totalAmount,
         paymentMethod: _selectedPaymentMethod,
-        receipt: null, // TODO: Create Receipt object from transaction data
-        onNewTransaction: () {
-          widget.onPaymentComplete();
-        },
-        onPrinterSettings: null, // TODO: Add navigation to printer settings
-      ),
-    );
+        invoiceType: '02', // Simplified invoice (B2C)
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _isProcessing = false;
+      });
+
+      if (result.success && result.transaction != null) {
+        // Create receipt object
+        final receipt = Receipt(
+          transactionNumber: result.transaction!.transactionNumber,
+          transactionDate: result.transaction!.transactionDate,
+          storeName: 'POS System', // TODO: Get from settings
+          items: cartItems.map((item) => ReceiptItem(
+            name: item.product.name,
+            quantity: item.quantity,
+            unitPrice: item.product.price,
+            lineTotal: item.lineTotal,
+          )).toList(),
+          subtotal: subtotal,
+          discount: discount,
+          discountLabel: cartNotifier.discountLabel,
+          tax: taxAmount,
+          taxRate: 0.06,
+          total: totalAmount,
+          paymentMethod: _selectedPaymentMethod,
+          receivedAmount: _receivedAmount,
+          changeAmount: _changeAmount,
+        );
+
+        // Close payment dialog
+        if (mounted) {
+          Navigator.of(context).pop(true);
+        }
+
+        // Show success dialog
+        if (mounted) {
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => PaymentSuccessDialog(
+              transactionNumber: result.transaction!.transactionNumber,
+              totalAmount: totalAmount,
+              changeAmount: _changeAmount,
+              paymentMethod: _selectedPaymentMethod,
+              receipt: receipt,
+              onNewTransaction: () {
+                cartNotifier.clear();
+                widget.onPaymentComplete();
+              },
+              onPrinterSettings: null, // TODO: Add navigation to printer settings
+            ),
+          );
+        }
+
+        // Show sync status
+        if (!result.syncedImmediately) {
+          _showWarning('Payment completed. Invoice will be synced when online.');
+        }
+      } else {
+        _showError(result.error ?? 'Failed to process payment');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+        });
+        _showError('Error: ${e.toString()}');
+      }
+    }
   }
 
   void _showError(String message) {
@@ -75,6 +187,22 @@ class _PaymentDialogState extends State<PaymentDialog> {
       SnackBar(
         content: Text(message),
         backgroundColor: AppTheme.errorColor,
+      ),
+    );
+  }
+
+  void _showWarning(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Colors.white),
+            const SizedBox(width: 12),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: AppTheme.accentOrange,
+        duration: const Duration(seconds: 4),
       ),
     );
   }
@@ -552,14 +680,15 @@ class _PaymentDialogState extends State<PaymentDialog> {
           Expanded(
             flex: 2,
             child: InkWell(
-              onTap: _processPayment,
+              onTap: _isProcessing ? null : _processPayment,
               borderRadius: BorderRadius.circular(12),
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 18),
                 decoration: BoxDecoration(
-                  gradient: AppTheme.successGradient,
+                  gradient: _isProcessing ? null : AppTheme.successGradient,
+                  color: _isProcessing ? AppTheme.textSecondaryDark : null,
                   borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
+                  boxShadow: _isProcessing ? null : [
                     BoxShadow(
                       color: AppTheme.successColor.withOpacity(0.3),
                       blurRadius: 12,
@@ -567,14 +696,24 @@ class _PaymentDialogState extends State<PaymentDialog> {
                     ),
                   ],
                 ),
-                child: const Row(
+                child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.check_circle_rounded, color: Colors.white),
-                    SizedBox(width: 12),
+                    if (_isProcessing)
+                      const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
+                    else
+                      const Icon(Icons.check_circle_rounded, color: Colors.white),
+                    const SizedBox(width: 12),
                     Text(
-                      'Complete Payment',
-                      style: TextStyle(
+                      _isProcessing ? 'Processing...' : 'Complete Payment',
+                      style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
                         color: Colors.white,

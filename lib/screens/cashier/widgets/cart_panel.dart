@@ -617,19 +617,14 @@ class CartPanel extends ConsumerWidget {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => PaymentDialog(
+      builder: (dialogContext) => PaymentDialog(
         totalAmount: total,
         onPaymentComplete: () {
           // Clear cart after successful payment
           ref.read(cartProvider.notifier).clear();
 
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Transaction completed successfully!'),
-              backgroundColor: AppTheme.successColor,
-              duration: Duration(seconds: 2),
-            ),
-          );
+          // Don't show SnackBar here - PaymentSuccessDialog already shows success
+          // The SnackBar was causing the error because context was deactivated
         },
       ),
     );

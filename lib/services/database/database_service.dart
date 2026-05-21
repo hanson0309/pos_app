@@ -1,6 +1,8 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import 'dart:convert';
 import '../../config/app_config.dart';
+import '../../models/transaction.dart';
 
 class DatabaseService {
   static final DatabaseService instance = DatabaseService._init();
@@ -345,5 +347,133 @@ class DatabaseService {
     final db = await database;
     await db.close();
     _database = null;
+  }
+
+  // Transaction-specific methods
+  Future<void> insertTransaction(PosTransaction transaction) async {
+    final db = await database;
+    await db.insert('local_transactions', {
+      'id': transaction.transactionId,
+      'transaction_number': transaction.transactionNumber,
+      'transaction_date': transaction.transactionDate.millisecondsSinceEpoch,
+      'cashier_id': transaction.cashierId,
+      'customer_id': transaction.customerId,
+      'items_json': jsonEncode(transaction.items.map((e) => e.toJson()).toList()),
+      'subtotal': transaction.subtotal,
+      'tax_amount': transaction.taxAmount,
+      'total_amount': transaction.totalAmount,
+      'payment_method': transaction.paymentMethod,
+      'synced': transaction.isSynced ? 1 : 0,
+      'created_at': transaction.createdAt.millisecondsSinceEpoch,
+    });
+  }
+
+  Future<void> updateTransaction(PosTransaction transaction) async {
+    final db = await database;
+    await db.update(
+      'local_transactions',
+      {
+        'transaction_number': transaction.transactionNumber,
+        'transaction_date': transaction.transactionDate.millisecondsSinceEpoch,
+        'cashier_id': transaction.cashierId,
+        'customer_id': transaction.customerId,
+        'items_json': jsonEncode(transaction.items.map((e) => e.toJson()).toList()),
+        'subtotal': transaction.subtotal,
+        'tax_amount': transaction.taxAmount,
+        'total_amount': transaction.totalAmount,
+        'payment_method': transaction.paymentMethod,
+        'synced': transaction.isSynced ? 1 : 0,
+        'created_at': transaction.createdAt.millisecondsSinceEpoch,
+      },
+      where: 'id = ?',
+      whereArgs: [transaction.transactionId],
+    );
+  }
+
+  // Sync queue methods
+  Future<void> addToSyncQueue({
+    required String entityType,
+    required String action,
+    required Map<String, dynamic> payload,
+  }) async {
+    final db = await database;
+    await db.insert('sync_queue', {
+      'entity_type': entityType,
+      'action': action,
+      'payload_json': jsonEncode(payload),
+      'retry_count': 0,
+      'max_retries': 10,
+      'status': 'pending',
+      'created_at': DateTime.now().millisecondsSinceEpoch,
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> getPendingSyncItems() async {
+    final db = await database;
+    final results = await db.query(
+      'sync_queue',
+      where: 'status = ?',
+      whereArgs: ['pending'],
+      orderBy: 'created_at ASC',
+      limit: 50,
+    );
+
+    return results.map((row) {
+      return {
+        'id': row['id'],
+        'entity_type': row['entity_type'],
+        'action': row['action'],
+        'payload_json': jsonDecode(row['payload_json'] as String),
+        'retry_count': row['retry_count'],
+      };
+    }).toList();
+  }
+
+  Future<void> markSyncItemSuccess(int id) async {
+    final db = await database;
+    await db.update(
+      'sync_queue',
+      {'status': 'success'},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<void> incrementSyncRetry(int id) async {
+    final db = await database;
+    final item = await db.query(
+      'sync_queue',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+
+    if (item.isNotEmpty) {
+      final retryCount = (item.first['retry_count'] as int) + 1;
+      final maxRetries = item.first['max_retries'] as int;
+
+      if (retryCount >= maxRetries) {
+        // Mark as failed
+        await db.update(
+          'sync_queue',
+          {'status': 'failed', 'retry_count': retryCount},
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+      } else {
+        // Increment retry count with exponential backoff
+        final nextRetryAt = DateTime.now().add(
+          Duration(minutes: (1 << retryCount)), // 2^n minutes
+        );
+        await db.update(
+          'sync_queue',
+          {
+            'retry_count': retryCount,
+            'next_retry_at': nextRetryAt.millisecondsSinceEpoch,
+          },
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+      }
+    }
   }
 }

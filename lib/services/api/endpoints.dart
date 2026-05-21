@@ -210,3 +210,71 @@ class SettingsApi {
     return response.data['data'];
   }
 }
+
+class InvoiceApi {
+  final ApiService _apiService = ApiService.instance;
+
+  // Create invoice from POS transaction
+  // Uses the general invoice endpoint with source: 'pos'
+  Future<Map<String, dynamic>> createInvoice(
+    Map<String, dynamic> invoiceData,
+  ) async {
+    final response = await _apiService.post(
+      '/invoices',  // Changed from /pos/invoices to /invoices
+      data: invoiceData,
+    );
+
+    // Handle different response structures
+    if (response.data is Map<String, dynamic>) {
+      final data = response.data as Map<String, dynamic>;
+
+      // If response has 'data' wrapper
+      if (data.containsKey('data')) {
+        return Map<String, dynamic>.from(data['data']);
+      }
+
+      // If response is direct invoice object (has _id)
+      if (data.containsKey('_id')) {
+        return {
+          'invoice_id': data['_id'],
+          'invoice_number': data['invoice_number'],
+          'status': data['status'],
+          'created_at': data['created_at'],
+        };
+      }
+
+      // Otherwise return as is
+      return data;
+    }
+
+    throw Exception('Invalid response format');
+  }
+
+  // Get invoice by ID
+  Future<Map<String, dynamic>> getInvoice(String invoiceId) async {
+    final response = await _apiService.get('/invoices/$invoiceId');
+    return response.data['data'];
+  }
+
+  // Get invoices list
+  Future<List<Map<String, dynamic>>> getInvoices({
+    DateTime? startDate,
+    DateTime? endDate,
+    String? status,
+    int? page,
+    int? limit,
+  }) async {
+    final response = await _apiService.get(
+      '/invoices',
+      queryParameters: {
+        if (startDate != null) 'start_date': startDate.toIso8601String(),
+        if (endDate != null) 'end_date': endDate.toIso8601String(),
+        if (status != null) 'status': status,
+        if (page != null) 'page': page,
+        if (limit != null) 'limit': limit,
+      },
+    );
+
+    return List<Map<String, dynamic>>.from(response.data['data']);
+  }
+}
