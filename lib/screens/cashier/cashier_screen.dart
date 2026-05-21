@@ -1,0 +1,202 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../models/product.dart';
+import '../../config/theme.dart';
+import 'widgets/product_grid.dart';
+import 'widgets/cart_panel.dart';
+import 'widgets/category_tabs.dart';
+import 'widgets/search_bar.dart';
+
+class CashierScreen extends ConsumerStatefulWidget {
+  const CashierScreen({super.key});
+
+  @override
+  ConsumerState<CashierScreen> createState() => _CashierScreenState();
+}
+
+class _CashierScreenState extends ConsumerState<CashierScreen> {
+  String _selectedCategory = 'All';
+  String _searchQuery = '';
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppTheme.backgroundDark,
+      body: SafeArea(
+        child: Row(
+          children: [
+            // Left Side - Product Selection Area (70%)
+            Expanded(
+              flex: 7,
+              child: Column(
+                children: [
+                  // Top Bar with Search and Quick Actions
+                  _buildTopBar(),
+
+                  // Category Tabs
+                  CategoryTabs(
+                    selectedCategory: _selectedCategory,
+                    onCategoryChanged: (category) {
+                      setState(() {
+                        _selectedCategory = category;
+                      });
+                    },
+                  ),
+
+                  // Product Grid
+                  Expanded(
+                    child: ProductGrid(
+                      category: _selectedCategory,
+                      searchQuery: _searchQuery,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Vertical Divider
+            Container(
+              width: 1,
+              color: AppTheme.dividerColor.withOpacity(0.3),
+            ),
+
+            // Right Side - Cart and Checkout Area (30%)
+            const SizedBox(
+              width: 420,
+              child: CartPanel(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTopBar() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceDark,
+        border: Border(
+          bottom: BorderSide(
+            color: AppTheme.dividerColor.withOpacity(0.3),
+            width: 1,
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          // Logo/Store Name with Gradient
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            decoration: BoxDecoration(
+              gradient: AppTheme.primaryGradient,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.primaryColor.withOpacity(0.3),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.store_rounded, color: Colors.white, size: 24),
+                SizedBox(width: 12),
+                Text(
+                  'POS',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 20),
+
+          // Search Bar
+          Expanded(
+            child: CashierSearchBar(
+              onSearchChanged: (query) {
+                setState(() {
+                  _searchQuery = query;
+                });
+              },
+            ),
+          ),
+
+          const SizedBox(width: 16),
+
+          // Quick Action Buttons - Wrapped to prevent overflow
+          Wrap(
+            spacing: 8,
+            children: [
+              _buildQuickActionButton(
+                icon: Icons.qr_code_scanner_rounded,
+                label: 'Scan',
+                onTap: () {
+                  // TODO: Implement barcode scanner
+                },
+              ),
+              _buildQuickActionButton(
+                icon: Icons.person_add_rounded,
+                label: 'Customer',
+                onTap: () {
+                  // TODO: Implement customer selection
+                },
+              ),
+              _buildQuickActionButton(
+                icon: Icons.history_rounded,
+                label: 'History',
+                onTap: () {
+                  // TODO: Implement transaction history
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickActionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppTheme.surfaceLight.withOpacity(0.5),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: AppTheme.cardBorderColor.withOpacity(0.3),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 18, color: AppTheme.textPrimaryDark),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textPrimaryDark,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

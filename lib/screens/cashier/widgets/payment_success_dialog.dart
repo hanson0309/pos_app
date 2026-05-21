@@ -176,7 +176,7 @@ class _PaymentSuccessDialogState extends State<PaymentSuccessDialog> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Transaction #$transactionNumber',
+                    'Transaction #${widget.transactionNumber}',
                     style: TextStyle(
                       fontSize: 14,
                       color: Colors.white.withOpacity(0.8),
@@ -191,14 +191,14 @@ class _PaymentSuccessDialogState extends State<PaymentSuccessDialog> {
               padding: const EdgeInsets.all(24),
               child: Column(
                 children: [
-                  _buildDetailRow('Total Amount', 'RM ${totalAmount.toStringAsFixed(2)}'),
+                  _buildDetailRow('Total Amount', 'RM ${widget.totalAmount.toStringAsFixed(2)}'),
                   const SizedBox(height: 12),
                   _buildDetailRow('Payment Method', _getPaymentMethodLabel()),
-                  if (paymentMethod == 'cash' && changeAmount > 0) ...[
+                  if (widget.paymentMethod == 'cash' && widget.changeAmount > 0) ...[
                     const SizedBox(height: 12),
                     _buildDetailRow(
                       'Change',
-                      'RM ${changeAmount.toStringAsFixed(2)}',
+                      'RM ${widget.changeAmount.toStringAsFixed(2)}',
                       highlight: true,
                     ),
                   ],
@@ -308,7 +308,7 @@ class _PaymentSuccessDialogState extends State<PaymentSuccessDialog> {
   }
 
   String _getPaymentMethodLabel() {
-    switch (paymentMethod) {
+    switch (widget.paymentMethod) {
       case 'cash':
         return 'Cash';
       case 'card':
@@ -316,7 +316,7 @@ class _PaymentSuccessDialogState extends State<PaymentSuccessDialog> {
       case 'ewallet':
         return 'E-Wallet';
       default:
-        return paymentMethod;
+        return widget.paymentMethod;
     }
   }
 

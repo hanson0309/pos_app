@@ -1,10 +1,33 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'dart:io' show Platform;
-import 'package:uuid/uuid.dart';
-import '../../services/api/endpoints.dart';
-import '../../utils/constants.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+// import 'package:flutter/foundation.dart' show kIsWeb;
+// import 'dart:io' show Platform;
+// import 'package:uuid/uuid.dart';
+// import '../../services/api/endpoints.dart';
+// import '../../utils/constants.dart';
+// import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+// TEMPORARILY DISABLED - Pairing screen commented out for development
+// This will be re-enabled later when needed
+
+class PairingScreen extends StatelessWidget {
+  const PairingScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    // Return to cashier screen immediately
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Navigator.pushReplacementNamed(context, '/cashier');
+    });
+
+    return const Scaffold(
+      body: Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+  }
+}
+
+/* ORIGINAL CODE - COMMENTED OUT FOR DEVELOPMENT
 
 class PairingScreen extends StatefulWidget {
   const PairingScreen({super.key});
@@ -219,3 +242,5 @@ class _PairingScreenState extends State<PairingScreen> {
     );
   }
 }
+
+*/

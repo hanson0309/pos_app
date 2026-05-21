@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../screens/splash/splash_screen.dart';
 import '../screens/pairing/pairing_screen.dart';
 import '../screens/login/login_screen.dart';
+import '../screens/cashier/cashier_screen.dart';
 
 class AppRoutes {
   // Route Names
@@ -50,9 +51,7 @@ class AppRoutes {
 
       case cashier:
         return MaterialPageRoute(
-          builder: (_) => const Scaffold(
-            body: Center(child: Text('Cashier Screen')),
-          ),
+          builder: (_) => const CashierScreen(),
         );
 
       default:
