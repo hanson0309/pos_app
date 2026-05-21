@@ -116,6 +116,9 @@ class InvoiceItem {
   @JsonKey(name: 'tax_amount')
   final double taxAmount;
 
+  @JsonKey(name: 'classification_code', includeIfNull: false)
+  final String? classificationCode;
+
   @JsonKey(name: 'line_total')
   final double lineTotal;
 
@@ -127,6 +130,7 @@ class InvoiceItem {
     required this.taxType,
     required this.taxRate,
     required this.taxAmount,
+    this.classificationCode,
     required this.lineTotal,
   });
 

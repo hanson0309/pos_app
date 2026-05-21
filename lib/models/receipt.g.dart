@@ -20,7 +20,7 @@ Receipt _$ReceiptFromJson(Map<String, dynamic> json) => Receipt(
       discount: (json['discount'] as num?)?.toDouble() ?? 0,
       discountLabel: json['discount_label'] as String? ?? '',
       tax: (json['tax'] as num).toDouble(),
-      taxRate: (json['tax_rate'] as num?)?.toDouble() ?? 0.06,
+      taxRate: (json['tax_rate'] as num?)?.toDouble() ?? 6.0,
       total: (json['total'] as num).toDouble(),
       paymentMethod: json['payment_method'] as String,
       receivedAmount: (json['received_amount'] as num?)?.toDouble() ?? 0,

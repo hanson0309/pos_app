@@ -76,9 +76,9 @@ class _PaymentDialogState extends ConsumerState<PaymentDialog> {
 
       // Convert cart items to transaction items
       final transactionItems = cartItems.map((cartItem) {
-        final taxRate = 0.06; // 6% SST
+        final taxRate = 6.0; // 6% SST (as percentage, not decimal)
         final lineSubtotal = cartItem.product.price * cartItem.quantity;
-        final lineTax = lineSubtotal * taxRate;
+        final lineTax = lineSubtotal * (taxRate / 100); // Convert percentage to decimal for calculation
         final lineTotal = lineSubtotal + lineTax;
 
         return TransactionItem(
@@ -89,6 +89,7 @@ class _PaymentDialogState extends ConsumerState<PaymentDialog> {
           taxType: 'SST',
           taxRate: taxRate,
           taxAmount: lineTax,
+          classificationCode: cartItem.product.classificationCode,
           lineTotal: lineTotal,
         );
       }).toList();
@@ -97,7 +98,7 @@ class _PaymentDialogState extends ConsumerState<PaymentDialog> {
       final subtotal = cartNotifier.subtotal;
       final discount = cartNotifier.discountAmount;
       final taxableAmount = subtotal - discount;
-      final taxAmount = taxableAmount * 0.06;
+      final taxAmount = taxableAmount * 0.06; // 6% tax calculation
       final totalAmount = taxableAmount + taxAmount;
 
       // Process payment and create invoice
@@ -133,7 +134,7 @@ class _PaymentDialogState extends ConsumerState<PaymentDialog> {
           discount: discount,
           discountLabel: cartNotifier.discountLabel,
           tax: taxAmount,
-          taxRate: 0.06,
+          taxRate: 6.0, // 6% as percentage
           total: totalAmount,
           paymentMethod: _selectedPaymentMethod,
           receivedAmount: _receivedAmount,

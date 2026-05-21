@@ -41,6 +41,11 @@ class Product {
   @JsonKey(name: 'image_url')
   final String? imageUrl;
 
+  @JsonKey(name: 'classification_code')
+  final String? classificationCode;
+
+  final String? unit;
+
   @JsonKey(name: 'is_active')
   final bool isActive;
 
@@ -65,6 +70,8 @@ class Product {
     this.batchNumber,
     this.expiryDate,
     this.imageUrl,
+    this.classificationCode,
+    this.unit,
     this.isActive = true,
     required this.createdAt,
     required this.updatedAt,
@@ -109,6 +116,8 @@ class Product {
     String? batchNumber,
     DateTime? expiryDate,
     String? imageUrl,
+    String? classificationCode,
+    String? unit,
     bool? isActive,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -128,6 +137,8 @@ class Product {
       batchNumber: batchNumber ?? this.batchNumber,
       expiryDate: expiryDate ?? this.expiryDate,
       imageUrl: imageUrl ?? this.imageUrl,
+      classificationCode: classificationCode ?? this.classificationCode,
+      unit: unit ?? this.unit,
       isActive: isActive ?? this.isActive,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,

@@ -48,7 +48,7 @@ class Receipt {
     this.discount = 0,
     this.discountLabel = '',
     required this.tax,
-    this.taxRate = 0.06,
+    this.taxRate = 6.0, // 6% as percentage
     required this.total,
     required this.paymentMethod,
     this.receivedAmount = 0,

@@ -85,6 +85,7 @@ class TransactionService {
         taxType: item.taxType,
         taxRate: item.taxRate,
         taxAmount: item.taxAmount,
+        classificationCode: item.classificationCode,
         lineTotal: item.lineTotal,
       )).toList();
 

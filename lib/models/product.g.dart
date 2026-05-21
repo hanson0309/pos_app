@@ -23,6 +23,8 @@ Product _$ProductFromJson(Map<String, dynamic> json) => Product(
           ? null
           : DateTime.parse(json['expiry_date'] as String),
       imageUrl: json['image_url'] as String?,
+      classificationCode: json['classification_code'] as String?,
+      unit: json['unit'] as String?,
       isActive: json['is_active'] as bool? ?? true,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
@@ -43,6 +45,8 @@ Map<String, dynamic> _$ProductToJson(Product instance) => <String, dynamic>{
       'batch_number': instance.batchNumber,
       'expiry_date': instance.expiryDate?.toIso8601String(),
       'image_url': instance.imageUrl,
+      'classification_code': instance.classificationCode,
+      'unit': instance.unit,
       'is_active': instance.isActive,
       'created_at': instance.createdAt.toIso8601String(),
       'updated_at': instance.updatedAt.toIso8601String(),
