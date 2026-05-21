@@ -101,8 +101,8 @@ class ProductApi {
     );
 
     return {
-      'data': response.data['data'],
-      'pagination': response.data['pagination'],
+      'data': response.data['data'] ?? [],
+      'pagination': response.data['pagination'] ?? {},
     };
   }
 
