@@ -160,13 +160,15 @@ class DatabaseService {
     await db.execute('''
       CREATE TABLE printer_configs (
         id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
         name TEXT NOT NULL,
         type TEXT NOT NULL,
         address TEXT NOT NULL,
         paper_width INTEGER DEFAULT 80,
         is_default INTEGER DEFAULT 0,
         last_connected INTEGER,
-        created_at INTEGER NOT NULL
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
       )
     ''');
 
@@ -210,13 +212,15 @@ class DatabaseService {
       await db.execute('''
         CREATE TABLE printer_configs (
           id TEXT PRIMARY KEY,
+          tenant_id TEXT NOT NULL,
           name TEXT NOT NULL,
           type TEXT NOT NULL,
           address TEXT NOT NULL,
           paper_width INTEGER DEFAULT 80,
           is_default INTEGER DEFAULT 0,
           last_connected INTEGER,
-          created_at INTEGER NOT NULL
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
         )
       ''');
 
