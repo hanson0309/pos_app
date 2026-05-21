@@ -10,13 +10,13 @@ final productSyncServiceProvider = Provider<ProductSyncService>((ref) {
 // Products list provider
 final productsProvider = FutureProvider<List<Product>>((ref) async {
   final syncService = ref.watch(productSyncServiceProvider);
-  return await syncService.getLocalProducts();
+  return await syncService.getLocalProducts(activeOnly: false); // Show all products for now
 });
 
 // Filtered products provider (with search)
 final filteredProductsProvider = FutureProvider.family<List<Product>, String>((ref, searchQuery) async {
   final syncService = ref.watch(productSyncServiceProvider);
-  return await syncService.getLocalProducts(search: searchQuery.isEmpty ? null : searchQuery);
+  return await syncService.getLocalProducts(search: searchQuery.isEmpty ? null : searchQuery, activeOnly: false); // Show all products for now
 });
 
 // Product by barcode provider
