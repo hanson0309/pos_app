@@ -10,7 +10,12 @@ enum PrinterType {
 
 @JsonSerializable()
 class PrinterConfig {
-  final String id;
+  @JsonKey(name: '_id')
+  final String? id;
+
+  @JsonKey(name: 'tenant_id')
+  final String tenantId;
+
   final String name;
   @JsonKey(name: 'printer_type')
   final PrinterType type;
@@ -23,9 +28,12 @@ class PrinterConfig {
   final DateTime? lastConnected;
   @JsonKey(name: 'created_at')
   final DateTime createdAt;
+  @JsonKey(name: 'updated_at')
+  final DateTime updatedAt;
 
   PrinterConfig({
-    required this.id,
+    this.id,
+    required this.tenantId,
     required this.name,
     required this.type,
     required this.address,
@@ -33,6 +41,7 @@ class PrinterConfig {
     this.isDefault = false,
     this.lastConnected,
     required this.createdAt,
+    required this.updatedAt,
   });
 
   factory PrinterConfig.fromJson(Map<String, dynamic> json) =>
@@ -42,6 +51,7 @@ class PrinterConfig {
 
   PrinterConfig copyWith({
     String? id,
+    String? tenantId,
     String? name,
     PrinterType? type,
     String? address,
@@ -49,9 +59,11 @@ class PrinterConfig {
     bool? isDefault,
     DateTime? lastConnected,
     DateTime? createdAt,
+    DateTime? updatedAt,
   }) {
     return PrinterConfig(
       id: id ?? this.id,
+      tenantId: tenantId ?? this.tenantId,
       name: name ?? this.name,
       type: type ?? this.type,
       address: address ?? this.address,
@@ -59,6 +71,7 @@ class PrinterConfig {
       isDefault: isDefault ?? this.isDefault,
       lastConnected: lastConnected ?? this.lastConnected,
       createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 }
