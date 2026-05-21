@@ -155,13 +155,99 @@ class DatabaseService {
     await db.execute('''
       CREATE INDEX idx_appointments_date ON appointments(appointment_date)
     ''');
+
+    // Printer Configs Table
+    await db.execute('''
+      CREATE TABLE printer_configs (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        address TEXT NOT NULL,
+        paper_width INTEGER DEFAULT 80,
+        is_default INTEGER DEFAULT 0,
+        last_connected INTEGER,
+        created_at INTEGER NOT NULL
+      )
+    ''');
+
+    // Print Queue Table
+    await db.execute('''
+      CREATE TABLE print_queue (
+        id TEXT PRIMARY KEY,
+        transaction_id TEXT NOT NULL,
+        transaction_number TEXT NOT NULL,
+        receipt_data TEXT NOT NULL,
+        status TEXT DEFAULT 'pending',
+        retry_count INTEGER DEFAULT 0,
+        error_message TEXT,
+        created_at INTEGER NOT NULL,
+        printed_at INTEGER
+      )
+    ''');
+
+    // Print History Table
+    await db.execute('''
+      CREATE TABLE print_history (
+        id TEXT PRIMARY KEY,
+        transaction_id TEXT NOT NULL,
+        printer_id TEXT,
+        printer_name TEXT,
+        printed_at INTEGER NOT NULL,
+        success INTEGER DEFAULT 1
+      )
+    ''');
+
+    // Create index on print_queue status
+    await db.execute('''
+      CREATE INDEX idx_print_queue_status ON print_queue(status)
+    ''');
   }
 
   Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
     // Handle database upgrades here
     if (oldVersion < 2) {
-      // Example: Add new column in version 2
-      // await db.execute('ALTER TABLE products ADD COLUMN new_field TEXT');
+      // Add printer-related tables in version 2
+      await db.execute('''
+        CREATE TABLE printer_configs (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          type TEXT NOT NULL,
+          address TEXT NOT NULL,
+          paper_width INTEGER DEFAULT 80,
+          is_default INTEGER DEFAULT 0,
+          last_connected INTEGER,
+          created_at INTEGER NOT NULL
+        )
+      ''');
+
+      await db.execute('''
+        CREATE TABLE print_queue (
+          id TEXT PRIMARY KEY,
+          transaction_id TEXT NOT NULL,
+          transaction_number TEXT NOT NULL,
+          receipt_data TEXT NOT NULL,
+          status TEXT DEFAULT 'pending',
+          retry_count INTEGER DEFAULT 0,
+          error_message TEXT,
+          created_at INTEGER NOT NULL,
+          printed_at INTEGER
+        )
+      ''');
+
+      await db.execute('''
+        CREATE TABLE print_history (
+          id TEXT PRIMARY KEY,
+          transaction_id TEXT NOT NULL,
+          printer_id TEXT,
+          printer_name TEXT,
+          printed_at INTEGER NOT NULL,
+          success INTEGER DEFAULT 1
+        )
+      ''');
+
+      await db.execute('''
+        CREATE INDEX idx_print_queue_status ON print_queue(status)
+      ''');
     }
   }
 
