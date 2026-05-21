@@ -26,6 +26,19 @@
 
 ## 2. API 端点设计
 
+### 2.0 字段映射说明
+
+**后端与 Flutter 字段映射**:
+
+| 后端字段 (MongoDB) | API 响应字段 | Flutter Model 字段 | 说明 |
+|-------------------|-------------|-------------------|------|
+| `unit_price` | `unit_price` | `price` | 售价（后端用 unit_price，Flutter 用 price） |
+| `deleted_at` | `deleted_at` + `is_active` | `isActive` | 软删除（后端用时间戳，Flutter 用布尔值） |
+
+**is_active 计算规则**:
+- 后端：`is_active = (deleted_at == null)`
+- Flutter：从 API 接收 `is_active` 字段，保存到本地数据库
+
 ### 2.1 获取产品列表
 
 **端点**: `GET /api/v1/pos/products`
@@ -38,7 +51,7 @@
 |------|------|------|------|
 | search | String | 否 | 搜索关键词（匹配名称或描述） |
 | barcode | String | 否 | 条码精确匹配 |
-| updated_after | ISO8601 DateTime | 否 | 增量同步：只返回此时间后更新的产品 |
+| updated_since | ISO8601 DateTime | 否 | 增量同步：只返回此时间后更新的产品 |
 | page | Number | 否 | 页码（默认 1） |
 | limit | Number | 否 | 每页数量（默认 100，最大 500） |
 
@@ -54,7 +67,7 @@
       "name": "可口可乐 330ml",
       "description": "经典可乐",
       "barcode": "9556001234567",
-      "price": 2.50,
+      "unit_price": 2.50,
       "cost_price": 1.50,
       "tax_type": "01",
       "tax_rate": 0.06,
@@ -64,6 +77,7 @@
       "expiry_date": "2026-12-31T00:00:00Z",
       "image_url": "https://cdn.example.com/products/coke.jpg",
       "is_active": true,
+      "deleted_at": null,
       "created_at": "2026-05-01T10:00:00Z",
       "updated_at": "2026-05-21T15:30:00Z"
     }
@@ -77,6 +91,11 @@
   }
 }
 ```
+
+**字段说明**:
+- `unit_price`: 后端数据库字段名（售价）
+- `is_active`: 虚拟字段，计算自 `deleted_at == null`
+- `deleted_at`: 软删除时间戳，`null` 表示未删除
 
 **错误响应**:
 
@@ -127,7 +146,7 @@
   "name": "新产品",
   "description": "产品描述",
   "barcode": "1234567890123",
-  "price": 10.00,
+  "unit_price": 10.00,
   "cost_price": 5.00,
   "tax_type": "01",
   "tax_rate": 0.06,
@@ -163,7 +182,7 @@
 }
 ```
 
-**说明**: 软删除，将 `is_active` 设置为 `false`，不从数据库删除
+**说明**: 软删除，将 `deleted_at` 设置为当前时间，不从数据库删除
 
 ## 3. 后端实现
 
@@ -178,7 +197,7 @@
   name: String,                  // 产品名称（必填）
   description: String,           // 产品描述
   barcode: String,               // 条码（唯一，可选）
-  price: Number,                 // 售价（必填）
+  unit_price: Number,            // 售价（必填）- 后端字段名
   cost_price: Number,            // 成本价
   tax_type: String,              // 税种代码（必填）
   tax_rate: Number,              // 税率（必填）
@@ -187,11 +206,14 @@
   batch_number: String,          // 批次号
   expiry_date: Date,             // 过期日期
   image_url: String,             // 图片 URL
-  is_active: Boolean,            // 是否启用（默认 true）
+  deleted_at: Date,              // 软删除时间戳（null = 未删除）
   created_at: Date,              // 创建时间
   updated_at: Date               // 更新时间
 }
 ```
+
+**虚拟字段**:
+- `is_active`: 在 API 响应中计算，`is_active = (deleted_at == null)`
 
 **索引**:
 
@@ -205,8 +227,8 @@
 // 全文搜索
 { tenant_id: 1, name: 'text', description: 'text' }
 
-// 活跃产品查询
-{ tenant_id: 1, is_active: 1 }
+// 活跃产品查询（deleted_at 为 null）
+{ tenant_id: 1, deleted_at: 1 }
 ```
 
 ### 3.2 路由结构
@@ -240,18 +262,18 @@ module.exports = router;
 ```javascript
 async getProducts(req, res) {
   try {
-    const { search, barcode, updated_after, page = 1, limit = 100 } = req.query;
+    const { search, barcode, updated_since, page = 1, limit = 100 } = req.query;
     const tenantId = req.device.tenant_id; // 从认证中间件获取
     
     // 构建查询条件
     const query = {
       tenant_id: tenantId,
-      is_active: true
+      deleted_at: null  // 只返回未删除的产品
     };
     
     // 增量同步：只返回更新时间晚于指定时间的产品
-    if (updated_after) {
-      query.updated_at = { $gt: new Date(updated_after) };
+    if (updated_since) {
+      query.updated_at = { $gt: new Date(updated_since) };
     }
     
     // 条码精确匹配
@@ -265,24 +287,32 @@ async getProducts(req, res) {
     }
     
     // 分页
-    const skip = (page - 1) * limit;
+    const pageNum = parseInt(page);
+    const limitNum = Math.min(parseInt(limit), 500); // 最大 500
+    const skip = (pageNum - 1) * limitNum;
     const total = await Product.countDocuments(query);
     
     // 查询产品
     const products = await Product.find(query)
       .sort({ updated_at: -1 })
       .skip(skip)
-      .limit(Math.min(limit, 500)) // 最大 500
+      .limit(limitNum)
       .lean();
+    
+    // 添加虚拟字段 is_active
+    const productsWithActive = products.map(product => ({
+      ...product,
+      is_active: product.deleted_at === null
+    }));
     
     res.json({
       success: true,
-      data: products,
+      data: productsWithActive,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: pageNum,
+        limit: limitNum,
         total,
-        total_pages: Math.ceil(total / limit),
+        total_pages: Math.ceil(total / limitNum),
         has_next: skip + products.length < total
       }
     });
@@ -363,7 +393,7 @@ CREATE TABLE IF NOT EXISTS products (
   name TEXT NOT NULL,
   description TEXT,
   barcode TEXT,
-  price REAL NOT NULL,
+  unit_price REAL NOT NULL,
   cost_price REAL,
   tax_type TEXT NOT NULL,
   tax_rate REAL NOT NULL,
@@ -373,6 +403,7 @@ CREATE TABLE IF NOT EXISTS products (
   expiry_date INTEGER,
   image_url TEXT,
   is_active INTEGER DEFAULT 1,
+  deleted_at INTEGER,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
@@ -468,8 +499,8 @@ class ProductSyncService {
           limit: 100,
         );
         
-        // 手动添加 updated_after 参数（因为 ProductApi 可能还没有这个参数）
-        final url = '/pos/products?updated_after=${lastSync.toIso8601String()}&page=$page&limit=100';
+        // 手动添加 updated_since 参数（因为 ProductApi 可能还没有这个参数）
+        final url = '/pos/products?updated_since=${lastSync.toIso8601String()}&page=$page&limit=100';
         
         final products = response['data'] as List;
         
@@ -518,7 +549,7 @@ class ProductSyncService {
             'name': product.name,
             'description': product.description,
             'barcode': product.barcode,
-            'price': product.price,
+            'unit_price': product.price,
             'cost_price': product.costPrice,
             'tax_type': product.taxType,
             'tax_rate': product.taxRate,
@@ -528,6 +559,7 @@ class ProductSyncService {
             'expiry_date': product.expiryDate?.millisecondsSinceEpoch,
             'image_url': product.imageUrl,
             'is_active': product.isActive ? 1 : 0,
+            'deleted_at': product.isActive ? null : DateTime.now().millisecondsSinceEpoch,
             'created_at': product.createdAt.millisecondsSinceEpoch,
             'updated_at': product.updatedAt.millisecondsSinceEpoch,
           },
@@ -593,7 +625,7 @@ class ProductSyncService {
       name: row['name'],
       description: row['description'],
       barcode: row['barcode'],
-      price: row['price'],
+      price: row['unit_price'],  // 注意：数据库字段是 unit_price
       costPrice: row['cost_price'],
       taxType: row['tax_type'],
       taxRate: row['tax_rate'],
@@ -730,7 +762,7 @@ Future<void> _onPairingSuccess(Map<String, dynamic> pairingData) async {
 
 ```
 1. 读取上次同步时间 last_sync_time
-2. 调用 GET /pos/products?updated_after=last_sync_time
+2. 调用 GET /pos/products?updated_since=last_sync_time
 3. 只返回 updated_at > last_sync_time 的产品
 4. 更新本地数据库（INSERT OR REPLACE）
 5. 更新 last_sync_time
