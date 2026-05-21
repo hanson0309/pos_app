@@ -20,14 +20,17 @@ class ProductSyncService {
       int totalSynced = 0;
 
       while (true) {
+        print('Fetching page $page...');
         final response = await _api.getProducts(
           page: page,
           limit: 100,
         );
 
         final products = response['data'] as List;
+        print('Received ${products.length} products from API');
         if (products.isEmpty) break;
 
+        print('Saving ${products.length} products to local database...');
         await _saveProductsToLocal(products);
         totalSynced += products.length;
         print('Synced $totalSynced products...');
@@ -38,14 +41,16 @@ class ProductSyncService {
         page++;
       }
 
+      print('Writing last sync timestamp...');
       await _storage.write(
         key: _lastSyncKey,
         value: DateTime.now().toIso8601String(),
       );
 
       print('Initial sync completed: $totalSynced products');
-    } catch (e) {
+    } catch (e, stackTrace) {
       print('Initial sync error: $e');
+      print('Stack trace: $stackTrace');
       rethrow;
     }
   }

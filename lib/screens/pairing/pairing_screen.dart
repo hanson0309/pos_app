@@ -116,17 +116,6 @@ class _PairingScreenState extends State<PairingScreen> {
       print('Tenant ID: $tenantIdToSave');
       print('Token saved: ${result['device_token'] != null}');
 
-      // Trigger initial product sync
-      print('Starting initial product sync...');
-      try {
-        final productSync = ProductSyncService();
-        await productSync.initialSync();
-        print('✅ Initial product sync completed');
-      } catch (syncError) {
-        print('⚠️ Initial sync failed: $syncError');
-        // Don't block pairing if sync fails - user can retry later
-      }
-
       if (mounted) {
         // Pairing successful, navigate directly to cashier screen
         _showSuccess('Device paired successfully!');
@@ -137,6 +126,14 @@ class _PairingScreenState extends State<PairingScreen> {
         if (mounted) {
           Navigator.pushReplacementNamed(context, '/cashier');
         }
+
+        // Trigger initial product sync in background (non-blocking)
+        print('Starting initial product sync in background...');
+        ProductSyncService().initialSync().then((_) {
+          print('✅ Initial product sync completed');
+        }).catchError((syncError) {
+          print('⚠️ Initial sync failed: $syncError');
+        });
       }
     } catch (e) {
       _showError('Pairing failed: ${e.toString()}');
