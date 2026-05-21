@@ -135,9 +135,6 @@ class TransactionItem {
   @JsonKey(name: 'tax_amount')
   final double taxAmount;
 
-  @JsonKey(name: 'classification_code')
-  final String? classificationCode;
-
   @JsonKey(name: 'line_total')
   final double lineTotal;
 
@@ -149,7 +146,6 @@ class TransactionItem {
     required this.taxType,
     required this.taxRate,
     required this.taxAmount,
-    this.classificationCode,
     required this.lineTotal,
   });
 
@@ -166,7 +162,6 @@ class TransactionItem {
     String? taxType,
     double? taxRate,
     double? taxAmount,
-    String? classificationCode,
     double? lineTotal,
   }) {
     return TransactionItem(
@@ -177,7 +172,6 @@ class TransactionItem {
       taxType: taxType ?? this.taxType,
       taxRate: taxRate ?? this.taxRate,
       taxAmount: taxAmount ?? this.taxAmount,
-      classificationCode: classificationCode ?? this.classificationCode,
       lineTotal: lineTotal ?? this.lineTotal,
     );
   }

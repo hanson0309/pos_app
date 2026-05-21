@@ -59,7 +59,6 @@ TransactionItem _$TransactionItemFromJson(Map<String, dynamic> json) =>
       taxType: json['tax_type'] as String,
       taxRate: (json['tax_rate'] as num).toDouble(),
       taxAmount: (json['tax_amount'] as num).toDouble(),
-      classificationCode: json['classification_code'] as String?,
       lineTotal: (json['line_total'] as num).toDouble(),
     );
 
@@ -72,6 +71,5 @@ Map<String, dynamic> _$TransactionItemToJson(TransactionItem instance) =>
       'tax_type': instance.taxType,
       'tax_rate': instance.taxRate,
       'tax_amount': instance.taxAmount,
-      'classification_code': instance.classificationCode,
       'line_total': instance.lineTotal,
     };

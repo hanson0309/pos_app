@@ -21,8 +21,8 @@ class Invoice {
   @JsonKey(name: 'customer_id', includeIfNull: false)
   final String? customerId;
 
-  @JsonKey(name: 'issue_date')
-  final String issueDate;
+  @JsonKey(name: 'issue_date', includeIfNull: false)
+  final String? issueDate;
 
   final List<InvoiceItem> items;
 
@@ -50,7 +50,7 @@ class Invoice {
     required this.posTransactionId,
     required this.invoiceType,
     this.customerId,
-    required this.issueDate,
+    this.issueDate,
     required this.items,
     required this.paymentMethod,
     required this.status,
@@ -71,7 +71,7 @@ class Invoice {
     required String transactionNumber,
     required String invoiceType,
     String? customerId,
-    required DateTime issueDate,
+    required DateTime issueDate, // Keep parameter for compatibility but don't use it
     required List<InvoiceItem> items,
     required String paymentMethod,
     required double subtotal,
@@ -84,7 +84,7 @@ class Invoice {
       posTransactionId: transactionId,
       invoiceType: invoiceType,
       customerId: customerId, // Will be excluded if null
-      issueDate: issueDate.toIso8601String().split('T')[0], // YYYY-MM-DD
+      issueDate: null, // Let backend use server date to avoid timezone issues
       items: items,
       paymentMethod: paymentMethod,
       status: 'draft',
@@ -116,9 +116,6 @@ class InvoiceItem {
   @JsonKey(name: 'tax_amount')
   final double taxAmount;
 
-  @JsonKey(name: 'classification_code', includeIfNull: false)
-  final String? classificationCode;
-
   @JsonKey(name: 'line_total')
   final double lineTotal;
 
@@ -130,7 +127,6 @@ class InvoiceItem {
     required this.taxType,
     required this.taxRate,
     required this.taxAmount,
-    this.classificationCode,
     required this.lineTotal,
   });
 

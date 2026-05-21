@@ -25,7 +25,7 @@ class TransactionService {
     required double taxAmount,
     required double totalAmount,
     required String paymentMethod,
-    String invoiceType = '02', // Default: Simplified invoice (B2C)
+    String invoiceType = '01', // Default: Standard invoice (B2C without customer = simplified)
   }) async {
     try {
       // Get tenant_id, cashier_id, and device_id from secure storage
@@ -85,7 +85,6 @@ class TransactionService {
         taxType: item.taxType,
         taxRate: item.taxRate,
         taxAmount: item.taxAmount,
-        classificationCode: item.classificationCode,
         lineTotal: item.lineTotal,
       )).toList();
 

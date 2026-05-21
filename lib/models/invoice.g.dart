@@ -13,7 +13,7 @@ Invoice _$InvoiceFromJson(Map<String, dynamic> json) => Invoice(
       posTransactionId: json['pos_transaction_id'] as String,
       invoiceType: json['invoice_type'] as String,
       customerId: json['customer_id'] as String?,
-      issueDate: json['issue_date'] as String,
+      issueDate: json['issue_date'] as String?,
       items: (json['items'] as List<dynamic>)
           .map((e) => InvoiceItem.fromJson(e as Map<String, dynamic>))
           .toList(),
@@ -43,7 +43,7 @@ Map<String, dynamic> _$InvoiceToJson(Invoice instance) {
   }
 
   writeNotNull('customer_id', instance.customerId);
-  val['issue_date'] = instance.issueDate;
+  writeNotNull('issue_date', instance.issueDate);
   val['items'] = instance.items;
   val['payment_method'] = instance.paymentMethod;
   val['status'] = instance.status;
@@ -62,28 +62,17 @@ InvoiceItem _$InvoiceItemFromJson(Map<String, dynamic> json) => InvoiceItem(
       taxType: json['tax_type'] as String,
       taxRate: (json['tax_rate'] as num).toDouble(),
       taxAmount: (json['tax_amount'] as num).toDouble(),
-      classificationCode: json['classification_code'] as String?,
       lineTotal: (json['line_total'] as num).toDouble(),
     );
 
-Map<String, dynamic> _$InvoiceItemToJson(InvoiceItem instance) {
-  final val = <String, dynamic>{
-    'product_id': instance.productId,
-    'description': instance.description,
-    'quantity': instance.quantity,
-    'unit_price': instance.unitPrice,
-    'tax_type': instance.taxType,
-    'tax_rate': instance.taxRate,
-    'tax_amount': instance.taxAmount,
-  };
-
-  void writeNotNull(String key, dynamic value) {
-    if (value != null) {
-      val[key] = value;
-    }
-  }
-
-  writeNotNull('classification_code', instance.classificationCode);
-  val['line_total'] = instance.lineTotal;
-  return val;
-}
+Map<String, dynamic> _$InvoiceItemToJson(InvoiceItem instance) =>
+    <String, dynamic>{
+      'product_id': instance.productId,
+      'description': instance.description,
+      'quantity': instance.quantity,
+      'unit_price': instance.unitPrice,
+      'tax_type': instance.taxType,
+      'tax_rate': instance.taxRate,
+      'tax_amount': instance.taxAmount,
+      'line_total': instance.lineTotal,
+    };

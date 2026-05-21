@@ -89,7 +89,6 @@ class _PaymentDialogState extends ConsumerState<PaymentDialog> {
           taxType: 'SST',
           taxRate: taxRate,
           taxAmount: lineTax,
-          classificationCode: cartItem.product.classificationCode,
           lineTotal: lineTotal,
         );
       }).toList();
@@ -109,7 +108,7 @@ class _PaymentDialogState extends ConsumerState<PaymentDialog> {
         taxAmount: taxAmount,
         totalAmount: totalAmount,
         paymentMethod: _selectedPaymentMethod,
-        invoiceType: '02', // Simplified invoice (B2C)
+        invoiceType: '01', 
       );
 
       if (!mounted) return;
