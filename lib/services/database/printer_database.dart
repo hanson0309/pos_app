@@ -11,6 +11,7 @@ class PrinterDatabase {
   Future<String> insertPrinterConfig(PrinterConfig config) async {
     final db = await _dbService.database;
 
+    final now = DateTime.now().millisecondsSinceEpoch;
     final data = {
       'id': config.id ?? _generateId(),
       'tenant_id': config.tenantId,
@@ -21,7 +22,7 @@ class PrinterDatabase {
       'is_default': config.isDefault ? 1 : 0,
       'last_connected': config.lastConnected?.millisecondsSinceEpoch,
       'created_at': config.createdAt.millisecondsSinceEpoch,
-      'updated_at': config.updatedAt.millisecondsSinceEpoch,
+      'updated_at': now, // Always use current timestamp
     };
 
     await db.insert(
@@ -137,18 +138,26 @@ class PrinterDatabase {
     );
   }
 
-  // Set a printer as default (and unset others)
+  // Set a printer as default (and unset others in the same tenant)
   Future<void> setDefaultPrinter(String id) async {
     final db = await _dbService.database;
 
     await db.transaction((txn) async {
-      // First, unset all default printers
+      // First, get the printer to find its tenant_id
+      final printer = await getPrinterConfigById(id);
+      if (printer == null) {
+        throw Exception('打印机不存在');
+      }
+
+      // Unset all default printers for this tenant only
       await txn.update(
         tableName,
         {
           'is_default': 0,
           'updated_at': DateTime.now().millisecondsSinceEpoch,
         },
+        where: 'tenant_id = ?',
+        whereArgs: [printer.tenantId],
       );
 
       // Then set the specified printer as default
@@ -169,6 +178,15 @@ class PrinterDatabase {
     final db = await _dbService.database;
 
     await db.transaction((txn) async {
+      // Verify the printer exists and belongs to the tenant
+      final printer = await getPrinterConfigById(id);
+      if (printer == null) {
+        throw Exception('打印机不存在');
+      }
+      if (printer.tenantId != tenantId) {
+        throw Exception('打印机不属于该租户');
+      }
+
       // First, unset all default printers for this tenant
       await txn.update(
         tableName,
