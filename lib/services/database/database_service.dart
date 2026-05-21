@@ -271,8 +271,8 @@ class DatabaseService {
       ''');
     }
 
-    if (oldVersion < 3) {
-      // Update products table schema for API sync in version 3
+    if (oldVersion < 2) {
+      // Update products table schema for API sync in version 2
       // Add new columns
       await db.execute('''
         ALTER TABLE products ADD COLUMN tenant_id TEXT NOT NULL DEFAULT ''

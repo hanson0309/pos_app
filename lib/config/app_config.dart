@@ -17,7 +17,7 @@ class AppConfig {
 
   // Database Configuration
   static const String databaseName = 'pos_app.db';
-  static const int databaseVersion = 3;
+  static const int databaseVersion = 2;
 
   // Cache Configuration
   static const Duration cacheExpiry = Duration(hours: 24);
