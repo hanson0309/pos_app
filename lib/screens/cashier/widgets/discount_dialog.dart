@@ -140,11 +140,13 @@ class _DiscountDialogState extends State<DiscountDialog> {
             ),
 
             // Content
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+            Flexible(
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                   // Current Total
                   Container(
                     padding: const EdgeInsets.all(16),
@@ -341,7 +343,9 @@ class _DiscountDialogState extends State<DiscountDialog> {
                       ],
                     ),
                   ),
-                ],
+                    ],
+                  ),
+                ),
               ),
             ),
 

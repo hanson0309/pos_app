@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/product.dart';
 import '../../config/theme.dart';
+import '../../services/product_sync_service.dart';
 import 'widgets/product_grid.dart';
 import 'widgets/cart_panel.dart';
 import 'widgets/category_tabs.dart';
@@ -17,6 +18,49 @@ class CashierScreen extends ConsumerStatefulWidget {
 class _CashierScreenState extends ConsumerState<CashierScreen> {
   String _selectedCategory = 'All';
   String _searchQuery = '';
+  bool _isSyncing = false;
+  bool _isCartExpanded = true;
+
+  Future<void> _syncData() async {
+    if (_isSyncing) return;
+
+    setState(() {
+      _isSyncing = true;
+    });
+
+    try {
+      final syncService = ProductSyncService();
+      await syncService.incrementalSync();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Sync completed successfully'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+        // Refresh the product grid
+        setState(() {});
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Sync failed: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSyncing = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -60,10 +104,64 @@ class _CashierScreenState extends ConsumerState<CashierScreen> {
               color: AppTheme.dividerColor.withOpacity(0.3),
             ),
 
-            // Right Side - Cart and Checkout Area (30%)
-            const SizedBox(
-              width: 420,
-              child: CartPanel(),
+            // Right Side - Cart and Checkout Area (collapsible)
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              width: _isCartExpanded ? 420 : 60,
+              clipBehavior: Clip.hardEdge,
+              decoration: const BoxDecoration(),
+              child: Stack(
+                children: [
+                  if (_isCartExpanded)
+                    const CartPanel(),
+                  if (!_isCartExpanded)
+                    Container(
+                      color: AppTheme.surfaceDark,
+                      width: 60,
+                    ),
+                  // Toggle button
+                  Positioned(
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    child: Center(
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _isCartExpanded = !_isCartExpanded;
+                          });
+                        },
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryColor,
+                            borderRadius: const BorderRadius.only(
+                              topRight: Radius.circular(12),
+                              bottomRight: Radius.circular(12),
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppTheme.primaryColor.withOpacity(0.3),
+                                blurRadius: 8,
+                                offset: const Offset(2, 0),
+                              ),
+                            ],
+                          ),
+                          child: Icon(
+                            _isCartExpanded
+                                ? Icons.chevron_right_rounded
+                                : Icons.chevron_left_rounded,
+                            color: Colors.white,
+                            size: 24,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -133,31 +231,39 @@ class _CashierScreenState extends ConsumerState<CashierScreen> {
           const SizedBox(width: 16),
 
           // Quick Action Buttons - Wrapped to prevent overflow
-          Wrap(
-            spacing: 8,
-            children: [
-              _buildQuickActionButton(
-                icon: Icons.qr_code_scanner_rounded,
-                label: 'Scan',
-                onTap: () {
-                  // TODO: Implement barcode scanner
-                },
-              ),
-              _buildQuickActionButton(
-                icon: Icons.person_add_rounded,
-                label: 'Customer',
-                onTap: () {
-                  // TODO: Implement customer selection
-                },
-              ),
-              _buildQuickActionButton(
-                icon: Icons.history_rounded,
-                label: 'History',
-                onTap: () {
-                  // TODO: Implement transaction history
-                },
-              ),
-            ],
+          Flexible(
+            child: Wrap(
+              spacing: 8,
+              children: [
+                _buildQuickActionButton(
+                  icon: Icons.qr_code_scanner_rounded,
+                  label: 'Scan',
+                  onTap: () {
+                    // TODO: Implement barcode scanner
+                  },
+                ),
+                _buildQuickActionButton(
+                  icon: Icons.person_add_rounded,
+                  label: 'Customer',
+                  onTap: () {
+                    // TODO: Implement customer selection
+                  },
+                ),
+                _buildQuickActionButton(
+                  icon: Icons.history_rounded,
+                  label: 'History',
+                  onTap: () {
+                    // TODO: Implement transaction history
+                  },
+                ),
+                _buildQuickActionButton(
+                  icon: _isSyncing ? Icons.sync_disabled : Icons.sync_rounded,
+                  label: 'Sync',
+                  onTap: _isSyncing ? () {} : _syncData,
+                  isLoading: _isSyncing,
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -168,6 +274,7 @@ class _CashierScreenState extends ConsumerState<CashierScreen> {
     required IconData icon,
     required String label,
     required VoidCallback onTap,
+    bool isLoading = false,
   }) {
     return InkWell(
       onTap: onTap,
@@ -184,7 +291,17 @@ class _CashierScreenState extends ConsumerState<CashierScreen> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 18, color: AppTheme.textPrimaryDark),
+            if (isLoading)
+              const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(AppTheme.textPrimaryDark),
+                ),
+              )
+            else
+              Icon(icon, size: 18, color: AppTheme.textPrimaryDark),
             const SizedBox(width: 6),
             Text(
               label,
