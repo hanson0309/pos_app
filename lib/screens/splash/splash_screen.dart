@@ -28,8 +28,8 @@ class _SplashScreenState extends State<SplashScreen> {
     final deviceToken = await _storage.read(key: Constants.keyDeviceToken);
 
     if (deviceToken != null && deviceToken.isNotEmpty) {
-      // 已配对，跳转到登录页
-      Navigator.pushReplacementNamed(context, '/login');
+      // 已配对，直接跳转到收银页
+      Navigator.pushReplacementNamed(context, '/cashier');
     } else {
       // 未配对，跳转到配对页
       Navigator.pushReplacementNamed(context, '/pairing');
