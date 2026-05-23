@@ -79,10 +79,12 @@ class PrintErrorDialog extends StatelessWidget {
             ),
 
             // Error Details
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                children: [
+            Flexible(
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    children: [
                   // Error Message Box
                   Container(
                     width: double.infinity,
@@ -168,7 +170,9 @@ class PrintErrorDialog extends StatelessWidget {
                       ],
                     ),
                   ),
-                ],
+                    ],
+                  ),
+                ),
               ),
             ),
 
