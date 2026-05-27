@@ -1,4 +1,5 @@
 {
+  "buildCommand": null,
   "outputDirectory": "build/web",
   "framework": null,
   "routes": [

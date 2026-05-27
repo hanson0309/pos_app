@@ -1,6 +1,6 @@
 class AppConfig {
-  // API Configuration
-  static const String apiBaseUrl = 'http://localhost:3000/api/v1';
+  // API Configuration http://localhost:3000/api/v1
+  static const String apiBaseUrl = 'https://backend-kappa-five-21.vercel.app/api/v1';
 
   // App Configuration
   static const String appName = 'POS App';
