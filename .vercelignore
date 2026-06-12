@@ -1,0 +1,14 @@
+OpenWA
+node_modules
+.git
+*.md
+docs
+test
+android
+ios
+macos
+windows
+linux
+.dart_tool
+.idea
+*.iml

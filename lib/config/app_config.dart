@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart';
 
 class AppConfig {
-  // API Configuration
-  static const String apiBaseUrl = 'http://localhost:3000/api/v1';
+  // API Configuration http://localhost:3000/api/v1
+  static const String apiBaseUrl = 'https://backend-kappa-five-21.vercel.app/api/v1';
 
   /// E-invoice claim site (React app). Used on mobile/desktop when not using web POS.
   static const String receiptClaimBaseUrl = 'http://localhost:5173';
