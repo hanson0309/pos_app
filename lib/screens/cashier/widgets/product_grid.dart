@@ -39,7 +39,7 @@ class ProductGrid extends ConsumerWidget {
                   const SizedBox(height: 16),
                   Text(
                     searchQuery.isEmpty
-                        ? 'No products available'
+                        ? 'No products loaded yet.\nUse Sync once, or wait a moment after opening the app.'
                         : 'No products found for "$searchQuery"',
                     style: TextStyle(
                       fontSize: 16,

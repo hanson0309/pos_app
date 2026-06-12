@@ -1,6 +1,32 @@
+import 'package:flutter/foundation.dart';
+
 class AppConfig {
   // API Configuration
   static const String apiBaseUrl = 'http://localhost:3000/api/v1';
+
+  /// E-invoice claim site (React app). Used on mobile/desktop when not using web POS.
+  static const String receiptClaimBaseUrl = 'http://localhost:5173';
+
+  /// Debug builds: on-screen receipt + virtual printer (no hardware).
+  static bool get useReceiptEmulator => kDebugMode;
+
+  /// Claim URL encoded in receipt QR.
+  /// Web POS (e.g. http://localhost:62610/): same origin + hash route.
+  /// Otherwise: separate frontend at [receiptClaimBaseUrl].
+  static String buildReceiptClaimUrl(
+    String receiptNo, {
+    String? tenantId,
+  }) {
+    final encoded = Uri.encodeComponent(receiptNo);
+    final tenantQuery = tenantId != null ? '?tenant=$tenantId' : '';
+
+    if (kIsWeb) {
+      final origin = Uri.base.origin;
+      return '$origin#/receipt/$encoded$tenantQuery';
+    }
+
+    return '$receiptClaimBaseUrl/receipt/$encoded$tenantQuery';
+  }
 
   // App Configuration
   static const String appName = 'POS App';

@@ -1,5 +1,6 @@
+import 'dart:math' show pow;
+
 import 'package:intl/intl.dart';
-import 'dart:math';
 
 class Helpers {
   // Format Currency
@@ -49,12 +50,20 @@ class Helpers {
     return amount + calculateTax(amount, taxRate);
   }
 
-  // Generate Transaction Number
-  static String generateTransactionNumber() {
-    final now = DateTime.now();
-    final dateStr = DateFormat('yyyyMMdd').format(now);
-    final timeStr = DateFormat('HHmmss').format(now);
-    return 'TXN-$dateStr-$timeStr';
+  /// Invoice prefix for current month (INV-YYYYMM-).
+  static String invoiceDocumentPrefix([DateTime? when]) {
+    final now = when ?? DateTime.now();
+    final period =
+        '${now.year}${now.month.toString().padLeft(2, '0')}';
+    return 'INV-$period-';
+  }
+
+  /// Format full invoice number: INV-YYYYMM-0001
+  static String formatInvoiceDocumentNumber(int sequence, [DateTime? when]) {
+    if (sequence < 1 || sequence > 9999) {
+      throw ArgumentError('sequence must be 1–9999');
+    }
+    return '${invoiceDocumentPrefix(when)}${sequence.toString().padLeft(4, '0')}';
   }
 
   // Validate Email

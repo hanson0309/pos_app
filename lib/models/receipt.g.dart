@@ -13,6 +13,11 @@ Receipt _$ReceiptFromJson(Map<String, dynamic> json) => Receipt(
       storeAddress: json['store_address'] as String?,
       storePhone: json['store_phone'] as String?,
       taxNumber: json['tax_number'] as String?,
+      storeLogoUrl: json['store_logo_url'] as String?,
+      serviceTax: (json['service_tax'] as num?)?.toDouble() ?? 0,
+      serviceTaxRate: (json['service_tax_rate'] as num?)?.toDouble() ?? 0,
+      einvoiceClaimUrl: json['einvoice_claim_url'] as String?,
+      invoiceId: json['invoice_id'] as String?,
       items: (json['items'] as List<dynamic>)
           .map((e) => ReceiptItem.fromJson(e as Map<String, dynamic>))
           .toList(),
@@ -36,6 +41,11 @@ Map<String, dynamic> _$ReceiptToJson(Receipt instance) => <String, dynamic>{
       'store_address': instance.storeAddress,
       'store_phone': instance.storePhone,
       'tax_number': instance.taxNumber,
+      'store_logo_url': instance.storeLogoUrl,
+      'service_tax': instance.serviceTax,
+      'service_tax_rate': instance.serviceTaxRate,
+      'einvoice_claim_url': instance.einvoiceClaimUrl,
+      'invoice_id': instance.invoiceId,
       'items': instance.items,
       'subtotal': instance.subtotal,
       'discount': instance.discount,

@@ -6,6 +6,7 @@ import '../models/transaction.dart';
 import '../models/product.dart';
 import 'printer/bluetooth_printer_manager.dart';
 import 'printer/network_printer_manager.dart';
+import 'printer/virtual_printer_manager.dart';
 import 'printer/receipt_generator.dart';
 
 class PrinterService extends ChangeNotifier {
@@ -16,6 +17,7 @@ class PrinterService extends ChangeNotifier {
   final BluetoothPrinterManager _bluetoothManager =
       BluetoothPrinterManager.instance;
   final NetworkPrinterManager _networkManager = NetworkPrinterManager.instance;
+  final VirtualPrinterManager _virtualManager = VirtualPrinterManager.instance;
   final ReceiptGenerator _receiptGenerator = ReceiptGenerator();
 
   PrinterConfig? _activePrinter;
@@ -25,11 +27,20 @@ class PrinterService extends ChangeNotifier {
   PrinterConfig? get activePrinter => _activePrinter;
   bool get isPrinting => _isPrinting;
   String? get lastError => _lastError;
-  bool get isConnected =>
-      _activePrinter != null &&
-      (_activePrinter!.type == PrinterType.bluetooth
-          ? _bluetoothManager.isConnected
-          : _networkManager.isConnected);
+  String? get lastEmulatorFilePath => _virtualManager.lastSavedFilePath;
+
+  bool get isConnected {
+    if (_activePrinter == null) return false;
+    switch (_activePrinter!.type) {
+      case PrinterType.bluetooth:
+        return _bluetoothManager.isConnected;
+      case PrinterType.virtual:
+        return _virtualManager.isConnected;
+      case PrinterType.network:
+      case PrinterType.usb:
+        return _networkManager.isConnected;
+    }
+  }
 
   /// 设置活动打印机
   Future<bool> setActivePrinter(PrinterConfig config) async {
@@ -42,12 +53,18 @@ class PrinterService extends ChangeNotifier {
         await _disconnectCurrent();
       }
 
-      // 连接新打印机
       bool connected = false;
-      if (config.type == PrinterType.bluetooth) {
-        connected = await _bluetoothManager.connect(config);
-      } else {
-        connected = await _networkManager.connect(config);
+      switch (config.type) {
+        case PrinterType.bluetooth:
+          connected = await _bluetoothManager.connect(config);
+          break;
+        case PrinterType.virtual:
+          connected = await _virtualManager.connect(config);
+          break;
+        case PrinterType.network:
+        case PrinterType.usb:
+          connected = await _networkManager.connect(config);
+          break;
       }
 
       if (connected) {
@@ -91,18 +108,10 @@ class PrinterService extends ChangeNotifier {
         _activePrinter!,
       );
 
-      // 发送到打印机
-      bool success = false;
-      if (_activePrinter!.type == PrinterType.bluetooth) {
-        success = await _bluetoothManager.print(bytes);
-      } else {
-        success = await _networkManager.print(bytes);
-      }
-
+      final success = await _sendToPrinter(bytes);
       if (!success) {
         _lastError = 'Print failed';
       }
-
       return success;
     } catch (e) {
       _lastError = e.toString();
@@ -110,6 +119,18 @@ class PrinterService extends ChangeNotifier {
     } finally {
       _isPrinting = false;
       notifyListeners();
+    }
+  }
+
+  Future<bool> _sendToPrinter(List<int> bytes) async {
+    switch (_activePrinter!.type) {
+      case PrinterType.bluetooth:
+        return _bluetoothManager.print(bytes);
+      case PrinterType.virtual:
+        return _virtualManager.print(bytes);
+      case PrinterType.network:
+      case PrinterType.usb:
+        return _networkManager.print(bytes);
     }
   }
 
@@ -129,18 +150,10 @@ class PrinterService extends ChangeNotifier {
       // 生成测试打印数据
       final bytes = await _receiptGenerator.generateTestReceipt(_activePrinter!);
 
-      // 发送到打印机
-      bool success = false;
-      if (_activePrinter!.type == PrinterType.bluetooth) {
-        success = await _bluetoothManager.print(bytes);
-      } else {
-        success = await _networkManager.print(bytes);
-      }
-
+      final success = await _sendToPrinter(bytes);
       if (!success) {
         _lastError = 'Test print failed';
       }
-
       return success;
     } catch (e) {
       _lastError = e.toString();
@@ -163,10 +176,17 @@ class PrinterService extends ChangeNotifier {
     if (_activePrinter == null) return;
 
     try {
-      if (_activePrinter!.type == PrinterType.bluetooth) {
-        await _bluetoothManager.disconnect();
-      } else {
-        await _networkManager.disconnect();
+      switch (_activePrinter!.type) {
+        case PrinterType.bluetooth:
+          await _bluetoothManager.disconnect();
+          break;
+        case PrinterType.virtual:
+          await _virtualManager.disconnect();
+          break;
+        case PrinterType.network:
+        case PrinterType.usb:
+          await _networkManager.disconnect();
+          break;
       }
     } catch (e) {
       // 忽略断开连接时的错误

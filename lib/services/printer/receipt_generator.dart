@@ -1,12 +1,15 @@
 import 'dart:typed_data';
+import 'package:dio/dio.dart';
 import 'package:esc_pos_utils/esc_pos_utils.dart';
+import 'package:image/image.dart' as img;
 import '../../models/receipt.dart';
 import '../../models/printer_config.dart';
+import 'receipt_qr_helper.dart';
 
-/// 收据生成器
-/// 根据 Receipt 模型生成 ESC/POS 打印指令
+/// Generates ESC/POS bytes for thermal receipts.
 class ReceiptGenerator {
-  /// 生成收据打印指令
+  final Dio _dio = Dio();
+
   Future<List<int>> generateReceipt(
     Receipt receipt,
     PrinterConfig printerConfig,
@@ -14,15 +17,24 @@ class ReceiptGenerator {
     final paperSize = printerConfig.paperWidth == 58
         ? PaperSize.mm58
         : PaperSize.mm80;
+    final maxImageWidth = printerConfig.paperWidth == 58 ? 384 : 576;
 
     final profile = await CapabilityProfile.load();
     final generator = Generator(paperSize, profile);
     final List<int> bytes = [];
 
-    // 初始化
     bytes.addAll(generator.reset());
 
-    // 店铺信息
+    // Company logo (optional)
+    if (receipt.storeLogoUrl != null && receipt.storeLogoUrl!.isNotEmpty) {
+      final logoImage = await _loadLogoImage(receipt.storeLogoUrl!, maxImageWidth);
+      if (logoImage != null) {
+        bytes.addAll(generator.image(logoImage, align: PosAlign.center));
+        bytes.addAll(generator.emptyLines(1));
+      }
+    }
+
+    // Store header
     bytes.addAll(generator.text(
       receipt.storeName,
       styles: const PosStyles(
@@ -33,23 +45,23 @@ class ReceiptGenerator {
       ),
     ));
 
-    if (receipt.storeAddress != null) {
+    if (receipt.storeAddress != null && receipt.storeAddress!.isNotEmpty) {
       bytes.addAll(generator.text(
         receipt.storeAddress!,
         styles: const PosStyles(align: PosAlign.center),
       ));
     }
 
-    if (receipt.storePhone != null) {
+    if (receipt.storePhone != null && receipt.storePhone!.isNotEmpty) {
       bytes.addAll(generator.text(
         'Tel: ${receipt.storePhone}',
         styles: const PosStyles(align: PosAlign.center),
       ));
     }
 
-    if (receipt.taxNumber != null) {
+    if (receipt.taxNumber != null && receipt.taxNumber!.isNotEmpty) {
       bytes.addAll(generator.text(
-        'Tax No: ${receipt.taxNumber}',
+        'SST/TIN: ${receipt.taxNumber}',
         styles: const PosStyles(align: PosAlign.center),
       ));
     }
@@ -57,12 +69,10 @@ class ReceiptGenerator {
     bytes.addAll(generator.hr());
     bytes.addAll(generator.emptyLines(1));
 
-    // 交易信息
     bytes.addAll(generator.text(
       'Receipt: ${receipt.transactionNumber}',
       styles: const PosStyles(align: PosAlign.left),
     ));
-
     bytes.addAll(generator.text(
       'Date: ${_formatDateTime(receipt.transactionDate)}',
       styles: const PosStyles(align: PosAlign.left),
@@ -75,16 +85,9 @@ class ReceiptGenerator {
       ));
     }
 
-    if (receipt.customerName != null && receipt.customerName!.isNotEmpty) {
-      bytes.addAll(generator.text(
-        'Customer: ${receipt.customerName}',
-        styles: const PosStyles(align: PosAlign.left),
-      ));
-    }
-
     bytes.addAll(generator.hr());
 
-    // 商品列表表头
+    // Items header
     bytes.addAll(generator.row([
       PosColumn(
         text: 'Item',
@@ -97,94 +100,73 @@ class ReceiptGenerator {
         styles: const PosStyles(bold: true, align: PosAlign.center),
       ),
       PosColumn(
-        text: 'Price',
-        width: 4,
+        text: 'Unit',
+        width: 2,
+        styles: const PosStyles(bold: true, align: PosAlign.right),
+      ),
+      PosColumn(
+        text: 'Total',
+        width: 2,
         styles: const PosStyles(bold: true, align: PosAlign.right),
       ),
     ]));
-
     bytes.addAll(generator.hr());
 
-    // 商品明细
     for (final item in receipt.items) {
       bytes.addAll(generator.text(
         item.name,
         styles: const PosStyles(align: PosAlign.left),
       ));
-
       bytes.addAll(generator.row([
+        PosColumn(text: '', width: 6),
         PosColumn(
-          text: item.unitPrice.toStringAsFixed(2),
-          width: 6,
-          styles: const PosStyles(align: PosAlign.left),
-        ),
-        PosColumn(
-          text: '${item.quantity}x',
+          text: '${item.quantity}',
           width: 2,
           styles: const PosStyles(align: PosAlign.center),
         ),
         PosColumn(
-          text: 'RM ${item.lineTotal.toStringAsFixed(2)}',
-          width: 4,
+          text: item.unitPrice.toStringAsFixed(2),
+          width: 2,
+          styles: const PosStyles(align: PosAlign.right),
+        ),
+        PosColumn(
+          text: item.lineTotal.toStringAsFixed(2),
+          width: 2,
           styles: const PosStyles(align: PosAlign.right),
         ),
       ]));
-
       if (item.note.isNotEmpty) {
-        bytes.addAll(generator.text(
-          '  Note: ${item.note}',
-          styles: const PosStyles(align: PosAlign.left),
-        ));
+        bytes.addAll(generator.text('  ${item.note}'));
       }
     }
 
     bytes.addAll(generator.hr());
 
-    // 金额汇总
-    bytes.addAll(generator.row([
-      PosColumn(
-        text: 'Subtotal:',
-        width: 8,
-        styles: const PosStyles(align: PosAlign.left),
-      ),
-      PosColumn(
-        text: 'RM ${receipt.subtotal.toStringAsFixed(2)}',
-        width: 4,
-        styles: const PosStyles(align: PosAlign.right),
-      ),
-    ]));
+    bytes.addAll(_summaryRow(generator, 'Subtotal:', receipt.subtotal));
 
     if (receipt.discount > 0) {
-      bytes.addAll(generator.row([
-        PosColumn(
-          text: 'Discount (${receipt.discountLabel}):',
-          width: 8,
-          styles: const PosStyles(align: PosAlign.left),
-        ),
-        PosColumn(
-          text: '- RM ${receipt.discount.toStringAsFixed(2)}',
-          width: 4,
-          styles: const PosStyles(align: PosAlign.right),
-        ),
-      ]));
+      bytes.addAll(_summaryRow(
+        generator,
+        'Discount (${receipt.discountLabel}):',
+        -receipt.discount,
+      ));
     }
 
-    bytes.addAll(generator.row([
-      PosColumn(
-        text: 'Tax (${(receipt.taxRate * 100).toStringAsFixed(0)}%):',
-        width: 8,
-        styles: const PosStyles(align: PosAlign.left),
-      ),
-      PosColumn(
-        text: 'RM ${receipt.tax.toStringAsFixed(2)}',
-        width: 4,
-        styles: const PosStyles(align: PosAlign.right),
-      ),
-    ]));
+    if (receipt.serviceTax > 0) {
+      final label = receipt.serviceTaxRate > 0
+          ? 'Service Tax (${receipt.serviceTaxRate.toStringAsFixed(0)}%):'
+          : 'Service Tax:';
+      bytes.addAll(_summaryRow(generator, label, receipt.serviceTax));
+    }
+
+    bytes.addAll(_summaryRow(
+      generator,
+      'Tax (${receipt.taxRate.toStringAsFixed(0)}%):',
+      receipt.tax,
+    ));
 
     bytes.addAll(generator.hr());
 
-    // 总计
     bytes.addAll(generator.row([
       PosColumn(
         text: 'TOTAL:',
@@ -210,70 +192,86 @@ class ReceiptGenerator {
 
     bytes.addAll(generator.hr());
 
-    // 支付信息
     bytes.addAll(generator.text(
       'Payment: ${_getPaymentMethodLabel(receipt.paymentMethod)}',
-      styles: const PosStyles(align: PosAlign.left, bold: true),
+      styles: const PosStyles(bold: true),
     ));
 
     if (receipt.paymentMethod == 'cash') {
-      bytes.addAll(generator.row([
-        PosColumn(
-          text: 'Received:',
-          width: 8,
-          styles: const PosStyles(align: PosAlign.left),
-        ),
-        PosColumn(
-          text: 'RM ${receipt.receivedAmount.toStringAsFixed(2)}',
-          width: 4,
-          styles: const PosStyles(align: PosAlign.right),
-        ),
-      ]));
-
-      bytes.addAll(generator.row([
-        PosColumn(
-          text: 'Change:',
-          width: 8,
-          styles: const PosStyles(align: PosAlign.left),
-        ),
-        PosColumn(
-          text: 'RM ${receipt.changeAmount.toStringAsFixed(2)}',
-          width: 4,
-          styles: const PosStyles(align: PosAlign.right),
-        ),
-      ]));
+      bytes.addAll(_summaryRow(generator, 'Received:', receipt.receivedAmount));
+      bytes.addAll(_summaryRow(generator, 'Change:', receipt.changeAmount));
     }
 
     bytes.addAll(generator.hr());
     bytes.addAll(generator.emptyLines(1));
 
-    // 感谢语
     bytes.addAll(generator.text(
       'Thank You!',
-      styles: const PosStyles(
-        align: PosAlign.center,
-        bold: true,
-        height: PosTextSize.size2,
-        width: PosTextSize.size2,
-      ),
+      styles: const PosStyles(align: PosAlign.center, bold: true),
     ));
 
-    bytes.addAll(generator.text(
-      'Please Come Again',
-      styles: const PosStyles(align: PosAlign.center),
-    ));
+    // E-invoice claim QR
+    if (receipt.einvoiceClaimUrl != null &&
+        receipt.einvoiceClaimUrl!.isNotEmpty) {
+      bytes.addAll(generator.emptyLines(1));
+      bytes.addAll(generator.text(
+        'Scan to request e-Invoice',
+        styles: const PosStyles(align: PosAlign.center, bold: true),
+      ));
+      bytes.addAll(generator.text(
+        receipt.transactionNumber,
+        styles: const PosStyles(align: PosAlign.center),
+      ));
+
+      final qrImage = ReceiptQrHelper.generateQrImage(
+        receipt.einvoiceClaimUrl!,
+        size: printerConfig.paperWidth == 58 ? 160 : 200,
+      );
+      bytes.addAll(generator.image(qrImage, align: PosAlign.center));
+      bytes.addAll(generator.text(
+        receipt.einvoiceClaimUrl!,
+        styles: const PosStyles(align: PosAlign.center),
+      ));
+    }
 
     bytes.addAll(generator.emptyLines(1));
-    bytes.addAll(generator.hr());
-
-    // 走纸和切纸
     bytes.addAll(generator.feed(2));
     bytes.addAll(generator.cut());
 
     return bytes;
   }
 
-  /// 生成测试打印
+  List<int> _summaryRow(Generator generator, String label, double amount) {
+    final prefix = amount < 0 ? '- RM ' : 'RM ';
+    return generator.row([
+      PosColumn(text: label, width: 8),
+      PosColumn(
+        text: '$prefix${amount.abs().toStringAsFixed(2)}',
+        width: 4,
+        styles: const PosStyles(align: PosAlign.right),
+      ),
+    ]);
+  }
+
+  Future<img.Image?> _loadLogoImage(String url, int maxWidth) async {
+    try {
+      final response = await _dio.get<List<int>>(
+        url,
+        options: Options(responseType: ResponseType.bytes),
+      );
+      final bytes = Uint8List.fromList(response.data ?? []);
+      final decoded = img.decodeImage(bytes);
+      if (decoded == null) return null;
+
+      if (decoded.width > maxWidth) {
+        return img.copyResize(decoded, width: maxWidth);
+      }
+      return decoded;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<List<int>> generateTestReceipt(PrinterConfig printerConfig) async {
     final paperSize = printerConfig.paperWidth == 58
         ? PaperSize.mm58
@@ -284,7 +282,6 @@ class ReceiptGenerator {
     final List<int> bytes = [];
 
     bytes.addAll(generator.reset());
-
     bytes.addAll(generator.text(
       'TEST PRINT',
       styles: const PosStyles(
@@ -294,43 +291,18 @@ class ReceiptGenerator {
         bold: true,
       ),
     ));
-
     bytes.addAll(generator.emptyLines(1));
     bytes.addAll(generator.hr());
-
-    bytes.addAll(generator.text(
-      'Printer: ${printerConfig.name}',
-      styles: const PosStyles(align: PosAlign.left),
-    ));
-
-    bytes.addAll(generator.text(
-      'Type: ${printerConfig.type.name}',
-      styles: const PosStyles(align: PosAlign.left),
-    ));
-
-    bytes.addAll(generator.text(
-      'Paper: ${printerConfig.paperWidth}mm',
-      styles: const PosStyles(align: PosAlign.left),
-    ));
-
-    bytes.addAll(generator.text(
-      'Time: ${_formatDateTime(DateTime.now())}',
-      styles: const PosStyles(align: PosAlign.left),
-    ));
-
+    bytes.addAll(generator.text('Printer: ${printerConfig.name}'));
+    bytes.addAll(generator.text('Type: ${printerConfig.type.name}'));
+    bytes.addAll(generator.text('Address: ${printerConfig.address}'));
+    bytes.addAll(generator.text('Paper: ${printerConfig.paperWidth}mm'));
+    bytes.addAll(generator.text('Time: ${_formatDateTime(DateTime.now())}'));
     bytes.addAll(generator.hr());
-    bytes.addAll(generator.emptyLines(1));
-
     bytes.addAll(generator.text(
-      'Print Test Successful!',
-      styles: const PosStyles(
-        align: PosAlign.center,
-        bold: true,
-      ),
+      'Network test OK',
+      styles: const PosStyles(align: PosAlign.center, bold: true),
     ));
-
-    bytes.addAll(generator.emptyLines(1));
-    bytes.addAll(generator.hr());
     bytes.addAll(generator.feed(2));
     bytes.addAll(generator.cut());
 

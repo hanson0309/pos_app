@@ -6,6 +6,7 @@ import '../models/invoice.dart';
 import '../utils/constants.dart';
 import 'api/endpoints.dart';
 import 'database/database_service.dart';
+import 'document_number_service.dart';
 
 class TransactionService {
   static final TransactionService instance = TransactionService._init();
@@ -43,9 +44,10 @@ class TransactionService {
       // Use userId as cashier_id, fallback to 'unknown' if not available
       final cashierId = userId ?? 'unknown';
 
-      // 1. Generate transaction ID and number
+      // 1. Generate transaction ID and sequential receipt/invoice number
       final transactionId = _uuid.v4();
-      final transactionNumber = _generateTransactionNumber();
+      final transactionNumber =
+          await DocumentNumberService.instance.allocateInvoiceNumber();
       final now = DateTime.now();
 
       // 2. Create POS transaction
@@ -152,14 +154,6 @@ class TransactionService {
         error: e.toString(),
       );
     }
-  }
-
-  /// Generate transaction number (format: TXN-YYYYMMDD-XXXXXX)
-  String _generateTransactionNumber() {
-    final now = DateTime.now();
-    final dateStr = '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
-    final randomStr = now.millisecondsSinceEpoch.toString().substring(7);
-    return 'TXN-$dateStr-$randomStr';
   }
 
   /// Get device ID from secure storage

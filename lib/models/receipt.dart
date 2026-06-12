@@ -16,6 +16,16 @@ class Receipt {
   final String? storePhone;
   @JsonKey(name: 'tax_number')
   final String? taxNumber;
+  @JsonKey(name: 'store_logo_url')
+  final String? storeLogoUrl;
+  @JsonKey(name: 'service_tax')
+  final double serviceTax;
+  @JsonKey(name: 'service_tax_rate')
+  final double serviceTaxRate;
+  @JsonKey(name: 'einvoice_claim_url')
+  final String? einvoiceClaimUrl;
+  @JsonKey(name: 'invoice_id')
+  final String? invoiceId;
   final List<ReceiptItem> items;
   final double subtotal;
   final double discount;
@@ -43,6 +53,11 @@ class Receipt {
     this.storeAddress,
     this.storePhone,
     this.taxNumber,
+    this.storeLogoUrl,
+    this.serviceTax = 0,
+    this.serviceTaxRate = 0,
+    this.einvoiceClaimUrl,
+    this.invoiceId,
     required this.items,
     required this.subtotal,
     this.discount = 0,

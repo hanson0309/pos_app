@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 import '../models/product.dart';
 import 'api/endpoints.dart';
@@ -15,6 +18,7 @@ class ProductSyncService {
   static DateTime? _lastSyncTime;
 
   static const String _lastSyncKey = 'last_product_sync';
+  static const String _webProductsCacheKey = 'web_products_cache_v1';
 
   // Initial full sync (called after device pairing)
   Future<void> initialSync() async {
@@ -118,6 +122,7 @@ class ProductSyncService {
       }
       _lastSyncTime = DateTime.now();
       print('Cached ${_cachedProducts.length} products in memory');
+      await _persistWebCacheToPrefs();
       return;
     }
 
@@ -156,12 +161,60 @@ class ProductSyncService {
     });
   }
 
+  /// Web: restore cache from disk or API so products survive reload / navigation.
+  Future<void> ensureWebProductsLoaded() async {
+    if (!kIsWeb) return;
+    await _loadWebCacheFromPrefs();
+    if (_cachedProducts.isNotEmpty) return;
+    final lastSyncStr = await _storage.read(key: _lastSyncKey);
+    if (lastSyncStr == null) return;
+    await _refetchAllProducts();
+  }
+
+  Future<void> _refetchAllProducts() async {
+    int page = 1;
+    while (true) {
+      final response = await _api.getProducts(page: page, limit: 100);
+      final products = response['data'] as List;
+      if (products.isEmpty) break;
+      await _saveProductsToLocal(products);
+      if (response['pagination']['has_next'] != true) break;
+      page++;
+    }
+    await _storage.write(
+      key: _lastSyncKey,
+      value: DateTime.now().toIso8601String(),
+    );
+  }
+
+  Future<void> _loadWebCacheFromPrefs() async {
+    if (!kIsWeb || _cachedProducts.isNotEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_webProductsCacheKey);
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final list = jsonDecode(raw) as List<dynamic>;
+      _cachedProducts = list
+          .map((e) => Product.fromJson(Map<String, dynamic>.from(e as Map)))
+          .toList();
+    } catch (e) {
+      print('Web product cache load failed: $e');
+    }
+  }
+
+  Future<void> _persistWebCacheToPrefs() async {
+    if (!kIsWeb || _cachedProducts.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    final raw = jsonEncode(_cachedProducts.map((p) => p.toJson()).toList());
+    await prefs.setString(_webProductsCacheKey, raw);
+  }
+
   Future<List<Product>> getLocalProducts({
     String? search,
     bool activeOnly = true,
   }) async {
     if (kIsWeb) {
-      // Use in-memory cache for Web platform
+      await ensureWebProductsLoaded();
       var products = _cachedProducts;
 
       if (activeOnly) {

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import '../../config/app_config.dart';
 import '../../config/theme.dart';
 import '../../models/printer_config.dart';
 import '../../services/database/printer_database.dart';
 import '../../services/printer_service.dart';
 import 'widgets/printer_card.dart';
 import 'widgets/add_bluetooth_printer_dialog.dart';
+import 'widgets/add_network_printer_dialog.dart';
 
 class PrinterSettingsScreen extends StatefulWidget {
   final String tenantId;
@@ -49,6 +51,29 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
         _errorMessage = e.toString();
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _addVirtualEmulatorPrinter() async {
+    final now = DateTime.now();
+    await _addPrinter(
+      PrinterConfig(
+        tenantId: widget.tenantId,
+        name: 'Receipt Emulator',
+        type: PrinterType.virtual,
+        address: 'emulator',
+        paperWidth: 80,
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+    final printers = await _printerDb.getPrinterConfigsByTenant(widget.tenantId);
+    PrinterConfig? emulator;
+    for (final p in printers) {
+      if (p.type == PrinterType.virtual) emulator = p;
+    }
+    if (emulator != null) {
+      await _connectPrinter(emulator);
     }
   }
 
@@ -204,11 +229,62 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
   }
 
   void _showAddPrinterDialog() {
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AddBluetoothPrinterDialog(
-        tenantId: widget.tenantId,
-        onAdd: _addPrinter,
+      backgroundColor: AppTheme.surfaceDark,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.bluetooth, color: Colors.white),
+              title: const Text('Bluetooth Printer'),
+              onTap: () {
+                Navigator.pop(context);
+                showDialog(
+                  context: context,
+                  builder: (context) => AddBluetoothPrinterDialog(
+                    tenantId: widget.tenantId,
+                    onAdd: _addPrinter,
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.developer_mode, color: Colors.white),
+              title: const Text('Receipt emulator (no hardware)'),
+              subtitle: Text(
+                'Preview on screen + save ESC/POS file — best for testing',
+                style: AppTheme.bodySmall,
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                _addVirtualEmulatorPrinter();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.lan, color: Colors.white),
+              title: const Text('Network Printer (RAW :9100)'),
+              subtitle: Text(
+                'Optional: PaperCut / virtual RAW on port 9100',
+                style: AppTheme.bodySmall,
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                showDialog(
+                  context: context,
+                  builder: (context) => AddNetworkPrinterDialog(
+                    tenantId: widget.tenantId,
+                    onAdd: _addPrinter,
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -266,7 +342,11 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _errorMessage != null
+          : Column(
+              children: [
+                if (AppConfig.useReceiptEmulator) _buildDebugBanner(),
+                Expanded(
+                  child: _errorMessage != null
               ? Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -303,12 +383,53 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
               : _printers.isEmpty
                   ? _buildEmptyState()
                   : _buildPrinterList(),
+                ),
+              ],
+            ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showAddPrinterDialog,
         icon: const Icon(Icons.add),
         label: const Text('Add Printer'),
         backgroundColor: AppTheme.primaryColor,
         foregroundColor: Colors.white,
+      ),
+    );
+  }
+
+  Widget _buildDebugBanner() {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.amber.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.amber.withOpacity(0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.bug_report, color: Colors.amber, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Debug build',
+                style: AppTheme.bodyMedium.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: Colors.amber,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Receipts use the on-screen emulator automatically after checkout. '
+            'Add a Bluetooth or network printer here when you have hardware; '
+            'release builds will not use the emulator.',
+            style: AppTheme.bodySmall.copyWith(color: AppTheme.textSecondaryDark),
+          ),
+        ],
       ),
     );
   }
@@ -339,7 +460,10 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              'Add a Bluetooth printer to start printing receipts',
+              AppConfig.useReceiptEmulator
+                  ? 'Debug mode: checkout opens the receipt emulator automatically.\n'
+                      'Add a real printer here when ready.'
+                  : 'Add a Bluetooth or network printer to print receipts',
               style: AppTheme.bodyMedium.copyWith(
                 color: AppTheme.textSecondaryDark,
               ),

@@ -40,4 +40,5 @@ const _$PrinterTypeEnumMap = {
   PrinterType.bluetooth: 'bluetooth',
   PrinterType.usb: 'usb',
   PrinterType.network: 'network',
+  PrinterType.virtual: 'virtual',
 };

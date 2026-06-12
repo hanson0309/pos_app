@@ -6,6 +6,8 @@ enum PrinterType {
   bluetooth,
   usb,
   network,
+  /// Saves ESC/POS to file; use with on-screen receipt preview for testing.
+  virtual,
 }
 
 @JsonSerializable()

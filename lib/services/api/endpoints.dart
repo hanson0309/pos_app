@@ -219,6 +219,19 @@ class SettingsApi {
 class InvoiceApi {
   final ApiService _apiService = ApiService.instance;
 
+  /// Next INV-YYYYMM-#### (shared by POS checkout and manual invoices).
+  Future<Map<String, dynamic>> getNextInvoiceNumber() async {
+    final response = await _apiService.get('/invoices/next-number');
+    final data = response.data;
+    if (data is Map<String, dynamic>) {
+      if (data.containsKey('data')) {
+        return Map<String, dynamic>.from(data['data']);
+      }
+      return data;
+    }
+    throw Exception('Invalid next-number response');
+  }
+
   // Create invoice from POS transaction
   // Uses the general invoice endpoint with source: 'pos'
   Future<Map<String, dynamic>> createInvoice(

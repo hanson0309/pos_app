@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../../../config/app_config.dart';
 import '../../../config/theme.dart';
 import '../../../models/receipt.dart';
 import '../../../services/printer_service.dart';
+import '../../../services/receipt_debug_service.dart';
+import '../../../utils/constants.dart';
 import 'print_error_dialog.dart';
+import 'receipt_emulator_preview_dialog.dart';
 
 class PaymentSuccessDialog extends StatefulWidget {
   final String transactionNumber;
@@ -30,7 +35,31 @@ class PaymentSuccessDialog extends StatefulWidget {
 
 class _PaymentSuccessDialogState extends State<PaymentSuccessDialog> {
   final PrinterService _printerService = PrinterService();
+  final _storage = const FlutterSecureStorage();
   bool _isPrinting = false;
+  bool _debugEmulatorReady = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (AppConfig.useReceiptEmulator) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _initDebugEmulator());
+    }
+  }
+
+  Future<void> _initDebugEmulator() async {
+    final tenantId = await _storage.read(key: Constants.keyTenantId);
+    if (tenantId == null || !mounted) return;
+
+    final ok = await ReceiptDebugService.instance.ensureEmulator(tenantId);
+    if (!mounted) return;
+
+    setState(() => _debugEmulatorReady = ok);
+
+    if (widget.receipt != null) {
+      _showPreviewReceipt();
+    }
+  }
 
   Future<void> _handlePrintReceipt() async {
     if (widget.receipt == null) {
@@ -43,6 +72,13 @@ class _PaymentSuccessDialogState extends State<PaymentSuccessDialog> {
     });
 
     try {
+      if (AppConfig.useReceiptEmulator && !_printerService.isConnected) {
+        final tenantId = await _storage.read(key: Constants.keyTenantId);
+        if (tenantId != null) {
+          await ReceiptDebugService.instance.ensureEmulator(tenantId);
+        }
+      }
+
       final success = await _printerService.printReceiptNew(widget.receipt!);
 
       if (mounted) {
@@ -51,7 +87,14 @@ class _PaymentSuccessDialogState extends State<PaymentSuccessDialog> {
         });
 
         if (success) {
-          _showSuccessSnackBar('Receipt printed successfully');
+          if (AppConfig.useReceiptEmulator &&
+              _printerService.lastEmulatorFilePath != null) {
+            _showSuccessSnackBar(
+              'Debug: receipt saved (${_printerService.lastEmulatorFilePath})',
+            );
+          } else {
+            _showSuccessSnackBar('Receipt printed successfully');
+          }
         } else {
           _showPrintErrorDialog();
         }
@@ -103,6 +146,22 @@ class _PaymentSuccessDialogState extends State<PaymentSuccessDialog> {
           ),
         ],
       ),
+    );
+  }
+
+  void _showPreviewReceipt() {
+    if (widget.receipt == null) {
+      _showErrorDialog('No receipt data available');
+      return;
+    }
+    ReceiptEmulatorPreviewDialog.show(
+      context,
+      receipt: widget.receipt!,
+      onPrintToEmulator: AppConfig.useReceiptEmulator
+          ? () async {
+              await _handlePrintReceipt();
+            }
+          : (_printerService.isConnected ? () async => _handlePrintReceipt() : null),
     );
   }
 
@@ -186,6 +245,32 @@ class _PaymentSuccessDialogState extends State<PaymentSuccessDialog> {
               ),
             ),
 
+            if (AppConfig.useReceiptEmulator)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.fromLTRB(24, 0, 24, 0),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.amber.withOpacity(0.4)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.bug_report, color: Colors.amber, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _debugEmulatorReady
+                            ? 'Debug mode: receipt emulator active (no physical printer)'
+                            : 'Debug mode: setting up receipt emulator…',
+                        style: AppTheme.bodySmall.copyWith(color: Colors.amber),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
             // Transaction Details
             Padding(
               padding: const EdgeInsets.all(24),
@@ -213,29 +298,49 @@ class _PaymentSuccessDialogState extends State<PaymentSuccessDialog> {
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
               child: Column(
                 children: [
-                  // Print Receipt Button
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
-                      onPressed: _isPrinting ? null : () {
-                        _handlePrintReceipt();
-                      },
-                      icon: _isPrinting
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor:
-                                    AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            )
-                          : const Icon(Icons.print_rounded),
-                      label: Text(_isPrinting ? 'Printing...' : 'Print Receipt'),
+                      onPressed: _isPrinting ? null : _showPreviewReceipt,
+                      icon: const Icon(Icons.qr_code_scanner_rounded),
+                      label: const Text('Preview receipt & test e-Invoice QR'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppTheme.primaryColor,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _isPrinting ? null : _handlePrintReceipt,
+                      icon: _isPrinting
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.print_rounded),
+                      label: Text(
+                        _isPrinting
+                            ? 'Printing...'
+                            : AppConfig.useReceiptEmulator
+                                ? 'Save receipt (debug emulator)'
+                                : _printerService.isConnected
+                                    ? 'Print to connected printer'
+                                    : 'Print (set up printer in Settings)',
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppTheme.textPrimaryDark,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        side: BorderSide(
+                          color: AppTheme.cardBorderColor.withOpacity(0.3),
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),

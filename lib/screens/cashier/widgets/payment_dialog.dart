@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../../../config/app_config.dart';
 import '../../../config/theme.dart';
 import '../../../models/transaction.dart';
 import '../../../models/receipt.dart';
 import '../../../services/transaction_service.dart';
+import '../../../utils/constants.dart';
 import '../providers/cart_provider.dart';
 import 'payment_success_dialog.dart';
 
@@ -118,11 +121,24 @@ class _PaymentDialogState extends ConsumerState<PaymentDialog> {
       });
 
       if (result.success && result.transaction != null) {
+        const storage = FlutterSecureStorage();
+        final tenantId = await storage.read(key: Constants.keyTenantId);
+        final receiptNo = result.transaction!.transactionNumber;
+        final claimUrl = AppConfig.buildReceiptClaimUrl(
+          receiptNo,
+          tenantId: tenantId,
+        );
+
         // Create receipt object
         final receipt = Receipt(
-          transactionNumber: result.transaction!.transactionNumber,
+          transactionNumber: receiptNo,
           transactionDate: result.transaction!.transactionDate,
-          storeName: 'POS System', // TODO: Get from settings
+          storeName: 'POS System', // TODO: load from tenant/POS settings API
+          storeAddress: null,
+          storePhone: null,
+          taxNumber: null,
+          einvoiceClaimUrl: claimUrl,
+          invoiceId: result.invoiceId,
           items: cartItems.map((item) => ReceiptItem(
             name: item.product.name,
             quantity: item.quantity,
@@ -132,8 +148,10 @@ class _PaymentDialogState extends ConsumerState<PaymentDialog> {
           subtotal: subtotal,
           discount: discount,
           discountLabel: cartNotifier.discountLabel,
+          serviceTax: 0,
+          serviceTaxRate: 0,
           tax: taxAmount,
-          taxRate: 6.0, // 6% as percentage
+          taxRate: 6.0,
           total: totalAmount,
           paymentMethod: _selectedPaymentMethod,
           receivedAmount: _receivedAmount,

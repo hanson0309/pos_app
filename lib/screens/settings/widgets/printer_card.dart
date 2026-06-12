@@ -326,6 +326,8 @@ class PrinterCard extends StatelessWidget {
         return Icons.usb;
       case PrinterType.network:
         return Icons.wifi;
+      case PrinterType.virtual:
+        return Icons.developer_mode;
     }
   }
 
@@ -337,6 +339,8 @@ class PrinterCard extends StatelessWidget {
         return 'USB Printer';
       case PrinterType.network:
         return 'Network Printer';
+      case PrinterType.virtual:
+        return 'Virtual (Emulator)';
     }
   }
 
