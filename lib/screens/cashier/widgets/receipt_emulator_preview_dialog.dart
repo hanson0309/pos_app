@@ -40,26 +40,27 @@ class ReceiptEmulatorPreviewDialog extends StatelessWidget {
     const text = Color(0xFF111827);
     const muted = Color(0xFF6B7280);
     const border = Color(0xFFE5E7EB);
+    final maxHeight = MediaQuery.sizeOf(context).height * 0.9;
 
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 440, maxHeight: 860),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF3F4F6),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: border),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.12),
-              blurRadius: 24,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: 440, maxHeight: maxHeight),
+        child: Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFFF3F4F6),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: border),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.12),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Column(
           children: [
             Container(
               padding: const EdgeInsets.fromLTRB(20, 16, 8, 16),
@@ -85,7 +86,7 @@ class ReceiptEmulatorPreviewDialog extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Receipt emulator',
+                          'Receipt preview',
                           style: TextStyle(
                             color: text,
                             fontSize: 17,
@@ -93,7 +94,7 @@ class ReceiptEmulatorPreviewDialog extends StatelessWidget {
                           ),
                         ),
                         Text(
-                          'Preview before printing',
+                          'Thermal slip with e-Invoice QR',
                           style: TextStyle(color: muted, fontSize: 12),
                         ),
                       ],
@@ -106,7 +107,7 @@ class ReceiptEmulatorPreviewDialog extends StatelessWidget {
                 ],
               ),
             ),
-            Flexible(
+            Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(20),
                 child: Center(
@@ -131,8 +132,14 @@ class ReceiptEmulatorPreviewDialog extends StatelessWidget {
               ),
             ),
             Container(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                border: Border(top: BorderSide(color: border)),
+                borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
+              ),
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   if (receipt.einvoiceClaimUrl != null)
                     SizedBox(
@@ -140,7 +147,7 @@ class ReceiptEmulatorPreviewDialog extends StatelessWidget {
                       child: ElevatedButton.icon(
                         onPressed: () => _openClaimUrl(context),
                         icon: const Icon(Icons.open_in_new, size: 18),
-                        label: const Text('Open claim page (test QR)'),
+                        label: const Text('Open claim page'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: primary,
                           foregroundColor: Colors.white,
@@ -159,7 +166,7 @@ class ReceiptEmulatorPreviewDialog extends StatelessWidget {
                       child: OutlinedButton.icon(
                         onPressed: onPrintToEmulator,
                         icon: const Icon(Icons.save_alt, size: 18),
-                        label: const Text('Save ESC/POS (debug emulator)'),
+                        label: const Text('Save receipt'),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: text,
                           padding: const EdgeInsets.symmetric(vertical: 14),
@@ -176,6 +183,7 @@ class ReceiptEmulatorPreviewDialog extends StatelessWidget {
             ),
           ],
         ),
+      ),
       ),
     );
   }
@@ -256,7 +264,13 @@ class _ReceiptPaper extends StatelessWidget {
                 children: [
                   Padding(
                     padding: const EdgeInsets.only(bottom: 8, right: 6),
-                    child: Text(item.name, style: textStyle),
+                    child: Text(
+                      item.name,
+                      style: textStyle,
+                      softWrap: true,
+                      maxLines: 4,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                   Padding(
                     padding: const EdgeInsets.only(bottom: 8),
@@ -351,10 +365,21 @@ class _ReceiptPaper extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 5),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: bold ? emphasized : normal),
-          Text(value, style: bold ? emphasized : normal),
+          Expanded(
+            flex: 2,
+            child: Text(label, style: bold ? emphasized : normal),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            flex: 3,
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              style: bold ? emphasized : normal,
+            ),
+          ),
         ],
       ),
     );

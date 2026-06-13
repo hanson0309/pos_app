@@ -37,12 +37,7 @@ class ReceiptGenerator {
     // Store header
     bytes.addAll(generator.text(
       receipt.storeName,
-      styles: const PosStyles(
-        align: PosAlign.center,
-        height: PosTextSize.size2,
-        width: PosTextSize.size2,
-        bold: true,
-      ),
+      styles: _headerStyle(printerConfig.textSize),
     ));
 
     if (receipt.storeAddress != null && receipt.storeAddress!.isNotEmpty) {
@@ -236,6 +231,9 @@ class ReceiptGenerator {
 
     bytes.addAll(generator.emptyLines(1));
     bytes.addAll(generator.feed(2));
+    if (printerConfig.printSound) {
+      bytes.addAll(_escPosBeep());
+    }
     bytes.addAll(generator.cut());
 
     return bytes;
@@ -304,9 +302,26 @@ class ReceiptGenerator {
       styles: const PosStyles(align: PosAlign.center, bold: true),
     ));
     bytes.addAll(generator.feed(2));
+    if (printerConfig.printSound) {
+      bytes.addAll(_escPosBeep());
+    }
     bytes.addAll(generator.cut());
 
     return bytes;
+  }
+
+  List<int> _escPosBeep() => [0x1B, 0x42, 1, 2];
+
+  PosStyles _headerStyle(PrinterTextSize size) {
+    final textSize = size == PrinterTextSize.small
+        ? PosTextSize.size1
+        : PosTextSize.size2;
+    return PosStyles(
+      align: PosAlign.center,
+      height: textSize,
+      width: textSize,
+      bold: true,
+    );
   }
 
   String _formatDateTime(DateTime dateTime) {

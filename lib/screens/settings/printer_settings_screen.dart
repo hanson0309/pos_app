@@ -1,12 +1,15 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import '../../config/app_config.dart';
 import '../../config/theme.dart';
 import '../../models/printer_config.dart';
 import '../../services/database/printer_database.dart';
 import '../../services/printer_service.dart';
+import 'widgets/edit_printer_dialog.dart';
 import 'widgets/printer_card.dart';
 import 'widgets/add_bluetooth_printer_dialog.dart';
 import 'widgets/add_network_printer_dialog.dart';
+import 'widgets/add_usb_printer_dialog.dart';
 
 class PrinterSettingsScreen extends StatefulWidget {
   final String tenantId;
@@ -32,6 +35,51 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
   void initState() {
     super.initState();
     _loadPrinters();
+    _restorePrinterConnection();
+  }
+
+  Future<void> _updatePrinterSettings(
+    PrinterConfig printer, {
+    PrinterProtocol? protocol,
+    bool? autoPrintReceipt,
+    PrinterTextSize? textSize,
+    bool? printSound,
+    String? name,
+    int? paperWidth,
+  }) async {
+    final updated = printer.copyWith(
+      protocol: protocol,
+      autoPrintReceipt: autoPrintReceipt,
+      textSize: textSize,
+      printSound: printSound,
+      name: name,
+      paperWidth: paperWidth,
+      updatedAt: DateTime.now(),
+    );
+    await _printerDb.updatePrinterConfig(updated);
+    _printerService.updateActivePrinterConfig(updated);
+    await _loadPrinters();
+  }
+
+  Future<void> _editPrinter(PrinterConfig printer) async {
+    final updated = await showDialog<PrinterConfig>(
+      context: context,
+      builder: (context) => EditPrinterDialog(printer: printer),
+    );
+    if (updated == null) return;
+    await _updatePrinterSettings(
+      printer,
+      name: updated.name,
+      paperWidth: updated.paperWidth,
+    );
+    if (mounted) {
+      _showSuccessSnackBar('Printer updated');
+    }
+  }
+
+  Future<void> _restorePrinterConnection() async {
+    final ok = await _printerService.restoreConnection(widget.tenantId);
+    if (mounted && ok) setState(() {});
   }
 
   Future<void> _loadPrinters() async {
@@ -94,8 +142,13 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
           ? config.copyWith(isDefault: true)
           : config;
 
-      await _printerDb.insertPrinterConfig(configToAdd);
+      final id = await _printerDb.insertPrinterConfig(configToAdd);
       await _loadPrinters();
+
+      final saved = await _printerDb.getPrinterConfigById(id);
+      if (saved != null) {
+        await _connectPrinter(saved);
+      }
 
       if (mounted) {
         _showSuccessSnackBar('Printer added successfully');
@@ -109,12 +162,16 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
 
   Future<void> _connectPrinter(PrinterConfig printer) async {
     try {
-      final success = await _printerService.setActivePrinter(printer);
+      final fresh = printer.id != null
+          ? await _printerDb.getPrinterConfigById(printer.id!) ?? printer
+          : printer;
+      final success = await _printerService.setActivePrinter(fresh);
       if (success) {
         // Update last connected timestamp
         await _printerDb.updateLastConnected(printer.id!, DateTime.now());
         await _loadPrinters();
         if (mounted) {
+          setState(() {});
           _showSuccessSnackBar('Connected to ${printer.name}');
         }
       } else {
@@ -239,50 +296,75 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(
-              leading: const Icon(Icons.bluetooth, color: Colors.white),
-              title: const Text('Bluetooth Printer'),
-              onTap: () {
-                Navigator.pop(context);
-                showDialog(
-                  context: context,
-                  builder: (context) => AddBluetoothPrinterDialog(
-                    tenantId: widget.tenantId,
-                    onAdd: _addPrinter,
-                  ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.developer_mode, color: Colors.white),
-              title: const Text('Receipt emulator (no hardware)'),
-              subtitle: Text(
-                'Preview on screen + save ESC/POS file — best for testing',
-                style: AppTheme.bodySmall,
+            if (!kIsWeb) ...[
+              ListTile(
+                leading: const Icon(Icons.wifi, color: Colors.white),
+                title: const Text('WiFi Printer'),
+                subtitle: Text(
+                  'Scan printers on the same Wi‑Fi network (port 9100)',
+                  style: AppTheme.bodySmall,
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  showDialog(
+                    context: context,
+                    builder: (context) => AddNetworkPrinterDialog(
+                      tenantId: widget.tenantId,
+                      onAdd: _addPrinter,
+                    ),
+                  );
+                },
               ),
-              onTap: () {
-                Navigator.pop(context);
-                _addVirtualEmulatorPrinter();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.lan, color: Colors.white),
-              title: const Text('Network Printer (RAW :9100)'),
-              subtitle: Text(
-                'Optional: PaperCut / virtual RAW on port 9100',
-                style: AppTheme.bodySmall,
+              ListTile(
+                leading: const Icon(Icons.bluetooth, color: Colors.white),
+                title: const Text('Bluetooth Printer'),
+                subtitle: Text(
+                  'Scan and pair nearby Bluetooth thermal printers',
+                  style: AppTheme.bodySmall,
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  showDialog(
+                    context: context,
+                    builder: (context) => AddBluetoothPrinterDialog(
+                      tenantId: widget.tenantId,
+                      onAdd: _addPrinter,
+                    ),
+                  );
+                },
               ),
-              onTap: () {
-                Navigator.pop(context);
-                showDialog(
-                  context: context,
-                  builder: (context) => AddNetworkPrinterDialog(
-                    tenantId: widget.tenantId,
-                    onAdd: _addPrinter,
-                  ),
-                );
-              },
-            ),
+              ListTile(
+                leading: const Icon(Icons.usb, color: Colors.white),
+                title: const Text('USB Printer'),
+                subtitle: Text(
+                  'Connect via USB cable (COM port)',
+                  style: AppTheme.bodySmall,
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  showDialog(
+                    context: context,
+                    builder: (context) => AddUsbPrinterDialog(
+                      tenantId: widget.tenantId,
+                      onAdd: _addPrinter,
+                    ),
+                  );
+                },
+              ),
+            ],
+            if (AppConfig.useReceiptEmulator)
+              ListTile(
+                leading: const Icon(Icons.developer_mode, color: Colors.white),
+                title: const Text('Receipt emulator (no hardware)'),
+                subtitle: Text(
+                  'Preview on screen — for testing only',
+                  style: AppTheme.bodySmall,
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _addVirtualEmulatorPrinter();
+                },
+              ),
           ],
         ),
       ),
@@ -347,42 +429,42 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
                 if (AppConfig.useReceiptEmulator) _buildDebugBanner(),
                 Expanded(
                   child: _errorMessage != null
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.error_outline,
-                        size: 64,
-                        color: AppTheme.errorColor,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Error loading printers',
-                        style: AppTheme.heading3,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _errorMessage!,
-                        style: AppTheme.bodySmall,
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 24),
-                      ElevatedButton.icon(
-                        onPressed: _loadPrinters,
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('Retry'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primaryColor,
-                          foregroundColor: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              : _printers.isEmpty
-                  ? _buildEmptyState()
-                  : _buildPrinterList(),
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.error_outline,
+                                size: 64,
+                                color: AppTheme.errorColor,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Error loading printers',
+                                style: AppTheme.heading3,
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                _errorMessage!,
+                                style: AppTheme.bodySmall,
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 24),
+                              ElevatedButton.icon(
+                                onPressed: _loadPrinters,
+                                icon: const Icon(Icons.refresh),
+                                label: const Text('Retry'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppTheme.primaryColor,
+                                  foregroundColor: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : _printers.isEmpty
+                          ? _buildEmptyState()
+                          : _buildPrinterList(),
                 ),
               ],
             ),
@@ -491,61 +573,8 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
 
   Widget _buildPrinterList() {
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
       children: [
-        // Connection Status Card
-        if (_printerService.activePrinter != null)
-          Container(
-            margin: const EdgeInsets.only(bottom: 16),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              gradient: AppTheme.successGradient,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(
-                    Icons.check_circle,
-                    color: Colors.white,
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Active Printer',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.white70,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _printerService.activePrinter!.name,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-        // Printers List
         ..._printers.map((printer) {
           final isConnected = _printerService.activePrinter?.id == printer.id;
           return PrinterCard(
@@ -556,11 +585,17 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
             onTest: _testPrint,
             onDelete: () => _deletePrinter(printer),
             onSetDefault: () => _setDefaultPrinter(printer),
+            onProtocolChanged: (protocol) =>
+                _updatePrinterSettings(printer, protocol: protocol),
+            onAutoPrintChanged: (enabled) =>
+                _updatePrinterSettings(printer, autoPrintReceipt: enabled),
+            onTextSizeChanged: (size) =>
+                _updatePrinterSettings(printer, textSize: size),
+            onPrintSoundChanged: (enabled) =>
+                _updatePrinterSettings(printer, printSound: enabled),
+            onEdit: () => _editPrinter(printer),
           );
         }),
-
-        // Bottom padding for FAB
-        const SizedBox(height: 80),
       ],
     );
   }

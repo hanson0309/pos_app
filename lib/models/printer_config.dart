@@ -10,6 +10,21 @@ enum PrinterType {
   virtual,
 }
 
+/// Print command language for the connected hardware.
+enum PrinterProtocol {
+  /// 58/80 mm receipt roll (ESC/POS).
+  escPos,
+  /// Label printer TSPL (Xprinter XP-320B, XP-420B, etc.).
+  tsplLabel,
+}
+
+/// Receipt / label text size on the printer.
+enum PrinterTextSize {
+  small,
+  normal,
+  large,
+}
+
 @JsonSerializable()
 class PrinterConfig {
   @JsonKey(name: '_id')
@@ -28,6 +43,14 @@ class PrinterConfig {
   final bool isDefault;
   @JsonKey(name: 'last_connected')
   final DateTime? lastConnected;
+  /// escpos = receipt roll, tspl = label printer.
+  final PrinterProtocol protocol;
+  @JsonKey(name: 'auto_print_receipt')
+  final bool autoPrintReceipt;
+  @JsonKey(name: 'text_size')
+  final PrinterTextSize textSize;
+  @JsonKey(name: 'print_sound')
+  final bool printSound;
   @JsonKey(name: 'created_at')
   final DateTime createdAt;
   @JsonKey(name: 'updated_at')
@@ -42,6 +65,10 @@ class PrinterConfig {
     this.paperWidth = 80,
     this.isDefault = false,
     this.lastConnected,
+    this.protocol = PrinterProtocol.escPos,
+    this.autoPrintReceipt = false,
+    this.textSize = PrinterTextSize.normal,
+    this.printSound = true,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -60,6 +87,10 @@ class PrinterConfig {
     int? paperWidth,
     bool? isDefault,
     DateTime? lastConnected,
+    PrinterProtocol? protocol,
+    bool? autoPrintReceipt,
+    PrinterTextSize? textSize,
+    bool? printSound,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -72,6 +103,10 @@ class PrinterConfig {
       paperWidth: paperWidth ?? this.paperWidth,
       isDefault: isDefault ?? this.isDefault,
       lastConnected: lastConnected ?? this.lastConnected,
+      protocol: protocol ?? this.protocol,
+      autoPrintReceipt: autoPrintReceipt ?? this.autoPrintReceipt,
+      textSize: textSize ?? this.textSize,
+      printSound: printSound ?? this.printSound,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

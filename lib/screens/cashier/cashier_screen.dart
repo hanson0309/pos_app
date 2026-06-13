@@ -1,8 +1,13 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../models/product.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../../config/navigate_printer_settings.dart';
 import '../../config/theme.dart';
+import '../../providers/product_provider.dart';
+import '../../services/printer_service.dart';
 import '../../services/product_sync_service.dart';
+import '../../utils/constants.dart';
 import 'widgets/product_grid.dart';
 import 'widgets/cart_panel.dart';
 import 'widgets/category_tabs.dart';
@@ -20,6 +25,37 @@ class _CashierScreenState extends ConsumerState<CashierScreen> {
   String _searchQuery = '';
   bool _isSyncing = false;
   bool _isCartExpanded = true;
+  StreamSubscription<void>? _productSyncSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _productSyncSubscription = ProductSyncService.onProductsUpdated.listen((_) {
+      if (mounted) _refreshProducts();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.invalidate(productsProvider);
+      _restorePrinterConnection();
+    });
+  }
+
+  Future<void> _restorePrinterConnection() async {
+    const storage = FlutterSecureStorage();
+    final tenantId = await storage.read(key: Constants.keyTenantId);
+    if (tenantId == null) return;
+    await PrinterService().restoreConnection(tenantId);
+  }
+
+  @override
+  void dispose() {
+    _productSyncSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _refreshProducts() {
+    ref.invalidate(productsProvider);
+    ref.invalidate(filteredProductsProvider);
+  }
 
   Future<void> _syncData() async {
     if (_isSyncing) return;
@@ -40,8 +76,7 @@ class _CashierScreenState extends ConsumerState<CashierScreen> {
             duration: Duration(seconds: 2),
           ),
         );
-        // Refresh the product grid
-        setState(() {});
+        _refreshProducts();
       }
     } catch (e) {
       if (mounted) {
@@ -261,6 +296,11 @@ class _CashierScreenState extends ConsumerState<CashierScreen> {
                   label: 'Sync',
                   onTap: _isSyncing ? () {} : _syncData,
                   isLoading: _isSyncing,
+                ),
+                _buildQuickActionButton(
+                  icon: Icons.print_rounded,
+                  label: 'Printer',
+                  onTap: () => openPrinterSettings(context),
                 ),
               ],
             ),

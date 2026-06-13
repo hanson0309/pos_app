@@ -42,9 +42,34 @@ class _PaymentSuccessDialogState extends State<PaymentSuccessDialog> {
   @override
   void initState() {
     super.initState();
-    if (AppConfig.useReceiptEmulator) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _initDebugEmulator());
+    _printerService.addListener(_onPrinterServiceChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _onDialogReady());
+  }
+
+  @override
+  void dispose() {
+    _printerService.removeListener(_onPrinterServiceChanged);
+    super.dispose();
+  }
+
+  void _onPrinterServiceChanged() {
+    if (mounted) setState(() {});
+  }
+
+  bool get _showPrinting =>
+      _isPrinting || _printerService.isPrinting;
+
+  Future<void> _onDialogReady() async {
+    if (AppConfig.useReceiptEmulator && !_printerService.isConnected) {
+      await _initDebugEmulator();
     }
+
+    final autoPrint = _printerService.activePrinter?.autoPrintReceipt ?? false;
+    if (!mounted || !autoPrint || widget.receipt == null) return;
+    if (!_printerService.isConnected) return;
+
+    // Print in background so payment success UI is instant.
+    _handlePrintReceipt(silent: true);
   }
 
   Future<void> _initDebugEmulator() async {
@@ -55,21 +80,26 @@ class _PaymentSuccessDialogState extends State<PaymentSuccessDialog> {
     if (!mounted) return;
 
     setState(() => _debugEmulatorReady = ok);
-
-    if (widget.receipt != null) {
-      _showPreviewReceipt();
-    }
   }
 
-  Future<void> _handlePrintReceipt() async {
+  Future<void> _handlePrintReceipt({bool silent = false}) async {
     if (widget.receipt == null) {
-      _showErrorDialog('No receipt data available');
+      if (!silent) _showErrorDialog('No receipt data available');
       return;
     }
 
-    setState(() {
-      _isPrinting = true;
-    });
+    if (_showPrinting) {
+      if (!silent) {
+        _showSuccessSnackBar('Printer is busy, please wait…');
+      }
+      return;
+    }
+
+    if (!silent && mounted) {
+      setState(() {
+        _isPrinting = true;
+      });
+    }
 
     try {
       if (AppConfig.useReceiptEmulator && !_printerService.isConnected) {
@@ -81,12 +111,16 @@ class _PaymentSuccessDialogState extends State<PaymentSuccessDialog> {
 
       final success = await _printerService.printReceiptNew(widget.receipt!);
 
-      if (mounted) {
+      if (!mounted) return;
+
+      if (!silent) {
         setState(() {
           _isPrinting = false;
         });
+      }
 
-        if (success) {
+      if (success) {
+        if (!silent) {
           if (AppConfig.useReceiptEmulator &&
               _printerService.lastEmulatorFilePath != null) {
             _showSuccessSnackBar(
@@ -95,12 +129,12 @@ class _PaymentSuccessDialogState extends State<PaymentSuccessDialog> {
           } else {
             _showSuccessSnackBar('Receipt printed successfully');
           }
-        } else {
-          _showPrintErrorDialog();
         }
+      } else if (!silent) {
+        _showPrintErrorDialog();
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted && !silent) {
         setState(() {
           _isPrinting = false;
         });
@@ -186,194 +220,216 @@ class _PaymentSuccessDialogState extends State<PaymentSuccessDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final maxHeight = MediaQuery.sizeOf(context).height * 0.92;
+
     return Dialog(
       backgroundColor: Colors.transparent,
-      child: Container(
-        width: 500,
-        decoration: BoxDecoration(
-          color: AppTheme.surfaceDark,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: AppTheme.cardBorderColor.withOpacity(0.3),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: 500, maxHeight: maxHeight),
+        child: Container(
+          decoration: BoxDecoration(
+            color: AppTheme.surfaceDark,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: AppTheme.cardBorderColor.withOpacity(0.3),
+            ),
           ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Success Icon
-            Container(
-              padding: const EdgeInsets.all(32),
-              decoration: BoxDecoration(
-                gradient: AppTheme.successGradient,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(24),
-                  topRight: Radius.circular(24),
-                ),
-              ),
-              child: Column(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.check_circle_rounded,
-                      size: 64,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Payment Successful!',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Transaction #${widget.transactionNumber}',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.white.withOpacity(0.8),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            if (AppConfig.useReceiptEmulator)
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Success header (fixed)
               Container(
-                width: double.infinity,
-                margin: const EdgeInsets.fromLTRB(24, 0, 24, 0),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.all(32),
                 decoration: BoxDecoration(
-                  color: Colors.amber.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.amber.withOpacity(0.4)),
+                  gradient: AppTheme.successGradient,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(24),
+                    topRight: Radius.circular(24),
+                  ),
                 ),
-                child: Row(
+                child: Column(
                   children: [
-                    const Icon(Icons.bug_report, color: Colors.amber, size: 18),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _debugEmulatorReady
-                            ? 'Debug mode: receipt emulator active (no physical printer)'
-                            : 'Debug mode: setting up receipt emulator…',
-                        style: AppTheme.bodySmall.copyWith(color: Colors.amber),
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        shape: BoxShape.circle,
                       ),
+                      child: const Icon(
+                        Icons.check_circle_rounded,
+                        size: 64,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Payment Successful!',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Transaction #${widget.transactionNumber}',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.white.withOpacity(0.8),
+                      ),
+                      textAlign: TextAlign.center,
                     ),
                   ],
                 ),
               ),
 
-            // Transaction Details
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                children: [
-                  _buildDetailRow('Total Amount', 'RM ${widget.totalAmount.toStringAsFixed(2)}'),
-                  const SizedBox(height: 12),
-                  _buildDetailRow('Payment Method', _getPaymentMethodLabel()),
-                  if (widget.paymentMethod == 'cash' && widget.changeAmount > 0) ...[
-                    const SizedBox(height: 12),
-                    _buildDetailRow(
-                      'Change',
-                      'RM ${widget.changeAmount.toStringAsFixed(2)}',
-                      highlight: true,
-                    ),
-                  ],
-                  const SizedBox(height: 12),
-                  _buildDetailRow('Date & Time', _getCurrentDateTime()),
-                ],
-              ),
-            ),
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (AppConfig.useReceiptEmulator)
+                        Container(
+                          width: double.infinity,
+                          margin: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.amber.withOpacity(0.4)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.bug_report, color: Colors.amber, size: 18),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _debugEmulatorReady
+                                      ? 'Debug mode: receipt emulator available'
+                                      : 'Debug mode: setting up receipt emulator…',
+                                  style: AppTheme.bodySmall.copyWith(color: Colors.amber),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
 
-            // Actions
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-              child: Column(
-                children: [
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _isPrinting ? null : _showPreviewReceipt,
-                      icon: const Icon(Icons.qr_code_scanner_rounded),
-                      label: const Text('Preview receipt & test e-Invoice QR'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primaryColor,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                      Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          children: [
+                            _buildDetailRow(
+                              'Total Amount',
+                              'RM ${widget.totalAmount.toStringAsFixed(2)}',
+                            ),
+                            const SizedBox(height: 12),
+                            _buildDetailRow(
+                              'Payment Method',
+                              _getPaymentMethodLabel(),
+                            ),
+                            if (widget.paymentMethod == 'cash' && widget.changeAmount > 0) ...[
+                              const SizedBox(height: 12),
+                              _buildDetailRow(
+                                'Change',
+                                'RM ${widget.changeAmount.toStringAsFixed(2)}',
+                                highlight: true,
+                              ),
+                            ],
+                            const SizedBox(height: 12),
+                            _buildDetailRow('Date & Time', _getCurrentDateTime()),
+                          ],
                         ),
                       ),
-                    ),
+
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                        child: Column(
+                          children: [
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                onPressed: _showPrinting ? null : _showPreviewReceipt,
+                                icon: const Icon(Icons.receipt_long_rounded),
+                                label: const Text('Preview receipt'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppTheme.primaryColor,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 16),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: _showPrinting ? null : () => _handlePrintReceipt(),
+                                icon: _showPrinting
+                                    ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      )
+                                    : const Icon(Icons.print_rounded),
+                                label: Text(
+                                  _showPrinting
+                                      ? 'Printing...'
+                                      : AppConfig.useReceiptEmulator
+                                          ? 'Save receipt (debug)'
+                                          : _printerService.isConnected
+                                              ? 'Print receipt'
+                                              : 'Print (set up printer)',
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: AppTheme.textPrimaryDark,
+                                  padding: const EdgeInsets.symmetric(vertical: 16),
+                                  side: BorderSide(
+                                    color: AppTheme.cardBorderColor.withOpacity(0.3),
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: () {
+                                        Navigator.of(context).pop();
+                                        widget.onNewTransaction();
+                                      },
+                                icon: const Icon(Icons.add_shopping_cart_rounded),
+                                label: const Text('New Transaction'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: AppTheme.textPrimaryDark,
+                                  padding: const EdgeInsets.symmetric(vertical: 16),
+                                  side: BorderSide(
+                                    color: AppTheme.cardBorderColor.withOpacity(0.3),
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: _isPrinting ? null : _handlePrintReceipt,
-                      icon: _isPrinting
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.print_rounded),
-                      label: Text(
-                        _isPrinting
-                            ? 'Printing...'
-                            : AppConfig.useReceiptEmulator
-                                ? 'Save receipt (debug emulator)'
-                                : _printerService.isConnected
-                                    ? 'Print to connected printer'
-                                    : 'Print (set up printer in Settings)',
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppTheme.textPrimaryDark,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        side: BorderSide(
-                          color: AppTheme.cardBorderColor.withOpacity(0.3),
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  // New Transaction Button
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: _isPrinting ? null : () {
-                        Navigator.of(context).pop();
-                        widget.onNewTransaction();
-                      },
-                      icon: const Icon(Icons.add_shopping_cart_rounded),
-                      label: const Text('New Transaction'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppTheme.textPrimaryDark,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        side: BorderSide(
-                          color: AppTheme.cardBorderColor.withOpacity(0.3),
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -391,20 +447,26 @@ class _PaymentSuccessDialogState extends State<PaymentSuccessDialog> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w500,
-              color: highlight ? AppTheme.successColor : AppTheme.textSecondaryDark,
+          Flexible(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+                color: highlight ? AppTheme.successColor : AppTheme.textSecondaryDark,
+              ),
             ),
           ),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: highlight ? AppTheme.successColor : AppTheme.textPrimaryDark,
+          const SizedBox(width: 12),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: highlight ? AppTheme.successColor : AppTheme.textPrimaryDark,
+              ),
             ),
           ),
         ],

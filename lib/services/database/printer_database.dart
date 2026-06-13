@@ -21,6 +21,10 @@ class PrinterDatabase {
       'paper_width': config.paperWidth,
       'is_default': config.isDefault ? 1 : 0,
       'last_connected': config.lastConnected?.millisecondsSinceEpoch,
+      'protocol': config.protocol == PrinterProtocol.tsplLabel ? 'tspl' : 'escpos',
+      'auto_print_receipt': config.autoPrintReceipt ? 1 : 0,
+      'text_size': config.textSize.name,
+      'print_sound': config.printSound ? 1 : 0,
       'created_at': config.createdAt.millisecondsSinceEpoch,
       'updated_at': now, // Always use current timestamp
     };
@@ -112,6 +116,10 @@ class PrinterDatabase {
       'paper_width': config.paperWidth,
       'is_default': config.isDefault ? 1 : 0,
       'last_connected': config.lastConnected?.millisecondsSinceEpoch,
+      'protocol': config.protocol == PrinterProtocol.tsplLabel ? 'tspl' : 'escpos',
+      'auto_print_receipt': config.autoPrintReceipt ? 1 : 0,
+      'text_size': config.textSize.name,
+      'print_sound': config.printSound ? 1 : 0,
       'updated_at': DateTime.now().millisecondsSinceEpoch,
     };
 
@@ -273,6 +281,22 @@ class PrinterDatabase {
   }
 
   // Helper method to convert database map to PrinterConfig
+  PrinterProtocol _protocolFromDb(String? value) {
+    if (value == 'tspl') return PrinterProtocol.tsplLabel;
+    return PrinterProtocol.escPos;
+  }
+
+  PrinterTextSize _textSizeFromDb(String? value) {
+    switch (value) {
+      case 'small':
+        return PrinterTextSize.small;
+      case 'large':
+        return PrinterTextSize.large;
+      default:
+        return PrinterTextSize.normal;
+    }
+  }
+
   PrinterConfig _printerConfigFromMap(Map<String, dynamic> map) {
     return PrinterConfig(
       id: map['id'] as String,
@@ -288,6 +312,10 @@ class PrinterDatabase {
       lastConnected: map['last_connected'] != null
           ? DateTime.fromMillisecondsSinceEpoch(map['last_connected'] as int)
           : null,
+      protocol: _protocolFromDb(map['protocol'] as String?),
+      autoPrintReceipt: (map['auto_print_receipt'] as int? ?? 0) == 1,
+      textSize: _textSizeFromDb(map['text_size'] as String?),
+      printSound: (map['print_sound'] as int? ?? 1) == 1,
       createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at'] as int),
       updatedAt: DateTime.fromMillisecondsSinceEpoch(map['updated_at'] as int),
     );

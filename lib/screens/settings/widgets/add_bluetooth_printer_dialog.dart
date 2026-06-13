@@ -30,6 +30,7 @@ class _AddBluetoothPrinterDialogState extends State<AddBluetoothPrinterDialog> {
   bool _isAdding = false;
   String? _errorMessage;
   int _paperWidth = 80;
+  PrinterProtocol _protocol = PrinterProtocol.tsplLabel;
 
   @override
   void initState() {
@@ -92,6 +93,7 @@ class _AddBluetoothPrinterDialogState extends State<AddBluetoothPrinterDialog> {
         type: PrinterType.bluetooth,
         address: _selectedDevice!.remoteId.toString(),
         paperWidth: _paperWidth,
+        protocol: _protocol,
         isDefault: false,
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
@@ -380,6 +382,41 @@ class _AddBluetoothPrinterDialogState extends State<AddBluetoothPrinterDialog> {
                     ),
                     const SizedBox(height: 20),
 
+                    Text(
+                      'Printer mode',
+                      style: AppTheme.bodyMedium.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildProtocolOption(
+                            PrinterProtocol.escPos,
+                            'Receipt roll',
+                            '58/80 mm ESC/POS',
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildProtocolOption(
+                            PrinterProtocol.tsplLabel,
+                            'Label printer',
+                            'TSPL (XP-320B)',
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'XP-320B and similar barcode label printers need Label (TSPL) mode.',
+                      style: AppTheme.bodySmall.copyWith(
+                        color: AppTheme.textSecondaryDark,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
                     // Paper Width
                     Text(
                       'Paper Width',
@@ -460,6 +497,53 @@ class _AddBluetoothPrinterDialogState extends State<AddBluetoothPrinterDialog> {
                   ),
                 ],
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProtocolOption(
+    PrinterProtocol protocol,
+    String title,
+    String subtitle,
+  ) {
+    final isSelected = _protocol == protocol;
+    return InkWell(
+      onTap: () => setState(() => _protocol = protocol),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AppTheme.primaryColor.withOpacity(0.1)
+              : AppTheme.surfaceLight.withOpacity(0.2),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected
+                ? AppTheme.primaryColor
+                : AppTheme.cardBorderColor.withOpacity(0.3),
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          children: [
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: AppTheme.bodyMedium.copyWith(
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                color: isSelected
+                    ? AppTheme.primaryColor
+                    : AppTheme.textPrimaryDark,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              style: AppTheme.caption,
             ),
           ],
         ),

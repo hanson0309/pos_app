@@ -184,6 +184,10 @@ class DatabaseService {
         paper_width INTEGER DEFAULT 80,
         is_default INTEGER DEFAULT 0,
         last_connected INTEGER,
+        protocol TEXT DEFAULT 'escpos',
+        auto_print_receipt INTEGER DEFAULT 0,
+        text_size TEXT DEFAULT 'normal',
+        print_sound INTEGER DEFAULT 1,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       )
@@ -334,6 +338,24 @@ class DatabaseService {
 
       await db.execute('''
         CREATE INDEX idx_products_is_active ON products(is_active)
+      ''');
+    }
+
+    if (oldVersion < 3) {
+      await db.execute('''
+        ALTER TABLE printer_configs ADD COLUMN protocol TEXT DEFAULT 'escpos'
+      ''');
+      await db.execute('''
+        ALTER TABLE printer_configs ADD COLUMN auto_print_receipt INTEGER DEFAULT 0
+      ''');
+    }
+
+    if (oldVersion < 4) {
+      await db.execute('''
+        ALTER TABLE printer_configs ADD COLUMN text_size TEXT DEFAULT 'normal'
+      ''');
+      await db.execute('''
+        ALTER TABLE printer_configs ADD COLUMN print_sound INTEGER DEFAULT 1
       ''');
     }
   }

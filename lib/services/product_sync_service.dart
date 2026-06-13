@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -12,6 +13,15 @@ class ProductSyncService {
   final DatabaseService _db = DatabaseService.instance;
   final ProductApi _api = ProductApi();
   final _storage = const FlutterSecureStorage();
+
+  static final _productsUpdatedController = StreamController<void>.broadcast();
+  static Stream<void> get onProductsUpdated => _productsUpdatedController.stream;
+
+  void _notifyProductsUpdated() {
+    if (!_productsUpdatedController.isClosed) {
+      _productsUpdatedController.add(null);
+    }
+  }
 
   // In-memory cache for Web platform
   static List<Product> _cachedProducts = [];
@@ -57,6 +67,7 @@ class ProductSyncService {
       );
 
       print('Initial sync completed: $totalSynced products');
+      _notifyProductsUpdated();
     } catch (e, stackTrace) {
       print('Initial sync error: $e');
       print('Stack trace: $stackTrace');
@@ -104,6 +115,7 @@ class ProductSyncService {
       );
 
       print('Incremental sync completed: $totalUpdated products updated');
+      _notifyProductsUpdated();
     } catch (e) {
       print('Incremental sync error: $e');
     }
@@ -123,6 +135,7 @@ class ProductSyncService {
       _lastSyncTime = DateTime.now();
       print('Cached ${_cachedProducts.length} products in memory');
       await _persistWebCacheToPrefs();
+      _notifyProductsUpdated();
       return;
     }
 
@@ -159,6 +172,7 @@ class ProductSyncService {
         );
       }
     });
+    _notifyProductsUpdated();
   }
 
   /// Web: restore cache from disk or API so products survive reload / navigation.

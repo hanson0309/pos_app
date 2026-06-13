@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import '../config/app_config.dart';
 import '../models/printer_config.dart';
 import 'database/printer_database.dart';
@@ -15,8 +14,14 @@ class ReceiptDebugService {
   bool get isEnabled => AppConfig.useReceiptEmulator;
 
   /// Ensures virtual emulator printer exists and is connected.
+  /// Does not replace an already-connected physical printer.
   Future<bool> ensureEmulator(String tenantId) async {
     if (!isEnabled) return false;
+
+    if (_printerService.isConnected &&
+        _printerService.activePrinter?.type != PrinterType.virtual) {
+      return true;
+    }
 
     final printers = await _printerDb.getPrinterConfigsByTenant(tenantId);
     PrinterConfig? emulator;

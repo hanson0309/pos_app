@@ -67,6 +67,9 @@ class Constants {
   static const String keyUserId = 'user_id';
   static const String keyLastSyncTime = 'last_sync_time';
   static const String keyPosSettings = 'pos_settings';
+  static const String keyAutoPrintReceipt = 'auto_print_receipt';
+  static const String keyLastConnectedPrinterId = 'last_connected_printer_id';
+  static const String keyPrinterProtocol = 'printer_protocol';
 
   // Date Formats
   static const String dateFormatDisplay = 'dd/MM/yyyy';

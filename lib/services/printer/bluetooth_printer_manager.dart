@@ -1,10 +1,24 @@
 import 'dart:async';
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import '../../models/printer_config.dart';
 
-/// 蓝牙打印机管理器
-/// 使用 flutter_blue_plus 实现蓝牙打印机的连接和打印功能
+/// BLE thermal printer service/characteristic UUIDs (Xprinter, ESC/POS, etc.).
+const _printerServiceHints = [
+  '18f0',
+  'ff00',
+  '49535343',
+  'e7810a71',
+];
+
+const _printerWriteHints = [
+  '2af1',
+  'ff02',
+  '8841-43f4',
+  'bef8d6c9',
+];
+
+/// Bluetooth printer manager using flutter_blue_plus (BLE).
 class BluetoothPrinterManager {
   static final BluetoothPrinterManager instance =
       BluetoothPrinterManager._init();
@@ -15,17 +29,12 @@ class BluetoothPrinterManager {
   BluetoothCharacteristic? _writeCharacteristic;
   bool _isConnected = false;
   PrinterConfig? _currentPrinter;
+  int _chunkSize = 20;
   StreamSubscription<BluetoothConnectionState>? _connectionStateSubscription;
 
   bool get isConnected => _isConnected;
   PrinterConfig? get currentPrinter => _currentPrinter;
 
-  /// 扫描蓝牙设备
-  ///
-  /// 参数:
-  /// - [timeout]: 扫描超时时间，默认 10 秒
-  ///
-  /// 返回: 扫描到的蓝牙设备列表
   Future<List<BluetoothDevice>> scanDevices({
     Duration timeout = const Duration(seconds: 10),
   }) async {
@@ -33,94 +42,56 @@ class BluetoothPrinterManager {
     final Set<String> deviceIds = {};
 
     try {
-      // 检查蓝牙是否可用
       if (await FlutterBluePlus.isSupported == false) {
         throw Exception('Bluetooth not supported by this device');
       }
 
-      // 检查蓝牙是否开启
       final adapterState = await FlutterBluePlus.adapterState.first;
       if (adapterState != BluetoothAdapterState.on) {
         throw Exception('Bluetooth is turned off');
       }
 
-      // 开始扫描
       await FlutterBluePlus.startScan(timeout: timeout);
 
-      // 监听扫描结果
       final subscription = FlutterBluePlus.scanResults.listen((results) {
-        for (ScanResult result in results) {
+        for (final result in results) {
           final device = result.device;
-          // 避免重复添加
-          if (!deviceIds.contains(device.remoteId.toString())) {
-            deviceIds.add(device.remoteId.toString());
+          final id = device.remoteId.toString();
+          if (!deviceIds.contains(id)) {
+            deviceIds.add(id);
             devices.add(device);
           }
         }
       });
 
-      // 等待扫描完成
       await Future.delayed(timeout);
-
-      // 停止扫描
       await FlutterBluePlus.stopScan();
       await subscription.cancel();
 
       return devices;
     } catch (e) {
-      // 确保停止扫描
       await FlutterBluePlus.stopScan();
       rethrow;
     }
   }
 
-  /// 连接到打印机
-  ///
-  /// 参数:
-  /// - [config]: 打印机配置，address 字段应为蓝牙设备的 MAC 地址
-  ///
-  /// 返回: 连接是否成功
   Future<bool> connect(PrinterConfig config) async {
     try {
-      // 如果已连接到其他设备，先断开
       if (_isConnected && _connectedDevice != null) {
         await disconnect();
       }
 
-      // 查找设备
-      BluetoothDevice? targetDevice;
+      BluetoothDevice? targetDevice = _findKnownDevice(config.address);
 
-      // 先检查已连接的设备
-      final connectedDevices = FlutterBluePlus.connectedDevices;
-      for (var device in connectedDevices) {
-        if (device.remoteId.toString() == config.address) {
-          targetDevice = device;
-          break;
-        }
+      if (targetDevice == null || !targetDevice.isConnected) {
+        targetDevice = BluetoothDevice.fromId(config.address);
+        await targetDevice.connect(
+          timeout: const Duration(seconds: 15),
+          autoConnect: false,
+        );
       }
 
-      // 如果没有找到已连接的设备，尝试扫描
-      if (targetDevice == null) {
-        final devices = await scanDevices(timeout: const Duration(seconds: 5));
-        for (var device in devices) {
-          if (device.remoteId.toString() == config.address) {
-            targetDevice = device;
-            break;
-          }
-        }
-      }
-
-      if (targetDevice == null) {
-        throw Exception('Printer device not found: ${config.address}');
-      }
-
-      // 连接设备
-      await targetDevice.connect(
-        timeout: const Duration(seconds: 15),
-        autoConnect: false,
-      );
-
-      // 监听连接状态
+      _connectionStateSubscription?.cancel();
       _connectionStateSubscription =
           targetDevice.connectionState.listen((state) {
         if (state == BluetoothConnectionState.disconnected) {
@@ -128,29 +99,28 @@ class BluetoothPrinterManager {
         }
       });
 
-      // 发现服务
-      final services = await targetDevice.discoverServices();
+      try {
+        await targetDevice.requestMtu(512);
+      } catch (_) {}
 
-      // 查找可写特征
-      BluetoothCharacteristic? writeChar;
-      for (var service in services) {
-        for (var characteristic in service.characteristics) {
-          // 查找具有写入属性的特征
-          if (characteristic.properties.write ||
-              characteristic.properties.writeWithoutResponse) {
-            writeChar = characteristic;
-            break;
-          }
-        }
-        if (writeChar != null) break;
-      }
+      await Future.delayed(const Duration(milliseconds: 200));
+      _chunkSize = _resolveChunkSize(targetDevice.mtuNow);
+
+      final services = await targetDevice.discoverServices();
+      final writeChar = _findWriteCharacteristic(services);
 
       if (writeChar == null) {
         await targetDevice.disconnect();
-        throw Exception('No writable characteristic found on printer');
+        throw Exception('No writable print characteristic found on printer');
       }
 
-      // 保存连接信息
+      if (kDebugMode) {
+        debugPrint(
+          'BLE printer: service=${writeChar.serviceUuid}, '
+          'char=${writeChar.uuid}, mtu=${targetDevice.mtuNow}, chunk=$_chunkSize',
+        );
+      }
+
       _connectedDevice = targetDevice;
       _writeCharacteristic = writeChar;
       _currentPrinter = config;
@@ -163,13 +133,54 @@ class BluetoothPrinterManager {
     }
   }
 
-  /// 打印数据
-  ///
-  /// 参数:
-  /// - [bytes]: 要打印的字节数据（ESC/POS 指令）
-  ///
-  /// 返回: 打印是否成功
-  Future<bool> print(List<int> bytes) async {
+  BluetoothDevice? _findKnownDevice(String address) {
+    for (final device in FlutterBluePlus.connectedDevices) {
+      if (device.remoteId.toString() == address) {
+        return device;
+      }
+    }
+    return null;
+  }
+
+  int _resolveChunkSize(int mtu) {
+    if (mtu <= 0) return 20;
+    return (mtu - 3).clamp(20, 512);
+  }
+
+  BluetoothCharacteristic? _findWriteCharacteristic(
+    List<BluetoothService> services,
+  ) {
+    BluetoothCharacteristic? fallback;
+
+    for (final service in services) {
+      final serviceId = service.uuid.toString().toLowerCase();
+      final isPrinterService = _printerServiceHints
+          .any((hint) => serviceId.contains(hint.toLowerCase()));
+
+      for (final characteristic in service.characteristics) {
+        final canWrite = characteristic.properties.write ||
+            characteristic.properties.writeWithoutResponse;
+        if (!canWrite) continue;
+
+        fallback ??= characteristic;
+
+        final charId = characteristic.uuid.toString().toLowerCase();
+        final isPrinterChar = _printerWriteHints
+            .any((hint) => charId.contains(hint.toLowerCase()));
+
+        if (isPrinterService && isPrinterChar) {
+          return characteristic;
+        }
+        if (isPrinterService || isPrinterChar) {
+          fallback = characteristic;
+        }
+      }
+    }
+
+    return fallback;
+  }
+
+  Future<bool> print(List<int> bytes, {bool lineOriented = false}) async {
     if (!_isConnected ||
         _connectedDevice == null ||
         _writeCharacteristic == null) {
@@ -177,37 +188,87 @@ class BluetoothPrinterManager {
     }
 
     try {
-      // 将数据分块发送（蓝牙传输有 MTU 限制）
-      const int chunkSize = 512; // 每次发送 512 字节
-      final Uint8List data = Uint8List.fromList(bytes);
+      _chunkSize = _resolveChunkSize(_connectedDevice!.mtuNow);
 
-      for (int i = 0; i < data.length; i += chunkSize) {
-        final int end = (i + chunkSize < data.length) ? i + chunkSize : data.length;
-        final chunk = data.sublist(i, end);
-
-        // 根据特征属性选择写入方式
-        if (_writeCharacteristic!.properties.writeWithoutResponse) {
-          await _writeCharacteristic!.write(
-            chunk,
-            withoutResponse: true,
-          );
-        } else {
-          await _writeCharacteristic!.write(chunk);
-        }
-
-        // 短暂延迟，避免数据丢失
-        if (end < data.length) {
-          await Future.delayed(const Duration(milliseconds: 50));
-        }
+      if (lineOriented) {
+        await _printLineOriented(bytes);
+      } else {
+        await _printChunked(bytes);
       }
-
+      await Future.delayed(const Duration(milliseconds: 400));
       return true;
     } catch (e) {
       throw Exception('Print failed: $e');
     }
   }
 
-  /// 断开连接
+  bool _preferWithoutResponse() {
+    final props = _writeCharacteristic!.properties;
+    return !props.write && props.writeWithoutResponse;
+  }
+
+  /// Send bytes over BLE, splitting when a single packet exceeds MTU.
+  Future<void> _writeBytes(
+    List<int> payload, {
+    required bool withoutResponse,
+  }) async {
+    if (payload.length <= _chunkSize) {
+      await _writeCharacteristic!.write(
+        payload,
+        withoutResponse: withoutResponse,
+      );
+      return;
+    }
+
+    for (int i = 0; i < payload.length; i += _chunkSize) {
+      final end =
+          (i + _chunkSize < payload.length) ? i + _chunkSize : payload.length;
+      await _writeCharacteristic!.write(
+        payload.sublist(i, end),
+        withoutResponse: withoutResponse,
+      );
+      if (end < payload.length) {
+        await Future.delayed(const Duration(milliseconds: 15));
+      }
+    }
+  }
+
+  Future<void> _printLineOriented(List<int> bytes) async {
+    final text = String.fromCharCodes(bytes);
+    final rawLines = text.split(RegExp(r'\r?\n'));
+    final withoutResponse = _preferWithoutResponse();
+
+    for (final line in rawLines) {
+      if (line.trim().isEmpty) continue;
+      final payload = [...line.codeUnits, 0x0d, 0x0a];
+      // QRCODE must arrive in one GATT write — printer ignores split commands.
+      if (line.startsWith('QRCODE') && payload.length > _chunkSize) {
+        throw Exception(
+          'QRCODE command too long (${payload.length} > $_chunkSize bytes). '
+          'Use a shorter claim URL.',
+        );
+      }
+      await _writeBytes(payload, withoutResponse: withoutResponse);
+      await Future.delayed(const Duration(milliseconds: 25));
+    }
+  }
+
+  Future<void> _printChunked(List<int> bytes) async {
+    final withoutResponse = _preferWithoutResponse();
+
+    for (int i = 0; i < bytes.length; i += _chunkSize) {
+      final end =
+          (i + _chunkSize < bytes.length) ? i + _chunkSize : bytes.length;
+      await _writeCharacteristic!.write(
+        bytes.sublist(i, end),
+        withoutResponse: withoutResponse,
+      );
+      if (end < bytes.length) {
+        await Future.delayed(const Duration(milliseconds: 30));
+      }
+    }
+  }
+
   Future<void> disconnect() async {
     try {
       await _connectionStateSubscription?.cancel();
@@ -216,40 +277,28 @@ class BluetoothPrinterManager {
       if (_connectedDevice != null) {
         await _connectedDevice!.disconnect();
       }
-    } catch (e) {
-      // 忽略断开连接时的错误
+    } catch (_) {
     } finally {
       _handleDisconnection();
     }
   }
 
-  /// 处理断开连接
   void _handleDisconnection() {
     _connectedDevice = null;
     _writeCharacteristic = null;
     _currentPrinter = null;
     _isConnected = false;
+    _chunkSize = 20;
   }
 
-  /// 获取设备名称
-  ///
-  /// 参数:
-  /// - [device]: 蓝牙设备
-  ///
-  /// 返回: 设备名称，如果没有名称则返回 MAC 地址
   Future<String> getDeviceName(BluetoothDevice device) async {
     try {
       final name = device.platformName;
-      if (name.isNotEmpty) {
-        return name;
-      }
-    } catch (e) {
-      // 忽略错误
-    }
+      if (name.isNotEmpty) return name;
+    } catch (_) {}
     return device.remoteId.toString();
   }
 
-  /// 清理资源
   Future<void> dispose() async {
     await disconnect();
   }

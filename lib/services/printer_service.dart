@@ -6,8 +6,12 @@ import '../models/transaction.dart';
 import '../models/product.dart';
 import 'printer/bluetooth_printer_manager.dart';
 import 'printer/network_printer_manager.dart';
+import 'printer/usb_printer_manager.dart';
 import 'printer/virtual_printer_manager.dart';
 import 'printer/receipt_generator.dart';
+import 'printer/tspl_receipt_generator.dart';
+import 'database/printer_database.dart';
+import 'printer_preferences.dart';
 
 class PrinterService extends ChangeNotifier {
   static final PrinterService _instance = PrinterService._internal();
@@ -17,8 +21,11 @@ class PrinterService extends ChangeNotifier {
   final BluetoothPrinterManager _bluetoothManager =
       BluetoothPrinterManager.instance;
   final NetworkPrinterManager _networkManager = NetworkPrinterManager.instance;
+  final UsbPrinterManager _usbManager = UsbPrinterManager.instance;
   final VirtualPrinterManager _virtualManager = VirtualPrinterManager.instance;
   final ReceiptGenerator _receiptGenerator = ReceiptGenerator();
+  final TsplReceiptGenerator _tsplGenerator = TsplReceiptGenerator();
+  final PrinterDatabase _printerDb = PrinterDatabase();
 
   PrinterConfig? _activePrinter;
   bool _isPrinting = false;
@@ -37,8 +44,9 @@ class PrinterService extends ChangeNotifier {
       case PrinterType.virtual:
         return _virtualManager.isConnected;
       case PrinterType.network:
-      case PrinterType.usb:
         return _networkManager.isConnected;
+      case PrinterType.usb:
+        return _usbManager.isConnected;
     }
   }
 
@@ -62,13 +70,21 @@ class PrinterService extends ChangeNotifier {
           connected = await _virtualManager.connect(config);
           break;
         case PrinterType.network:
-        case PrinterType.usb:
           connected = await _networkManager.connect(config);
+          break;
+        case PrinterType.usb:
+          connected = await _usbManager.connect(config);
           break;
       }
 
       if (connected) {
         _activePrinter = config;
+        if (config.id != null) {
+          await PrinterPreferences.setLastConnectedPrinterId(
+            config.tenantId,
+            config.id!,
+          );
+        }
         notifyListeners();
         return true;
       } else {
@@ -76,6 +92,53 @@ class PrinterService extends ChangeNotifier {
         notifyListeners();
         return false;
       }
+    } catch (e) {
+      _lastError = e.toString();
+      notifyListeners();
+      return false;
+    }
+  }
+
+  void updateActivePrinterConfig(PrinterConfig config) {
+    if (_activePrinter?.id == config.id) {
+      _activePrinter = config;
+      notifyListeners();
+    }
+  }
+
+  /// Reconnect the last used printer for this tenant (e.g. after app restart).
+  Future<bool> restoreConnection(String tenantId) async {
+    if (isConnected) return true;
+
+    try {
+      PrinterConfig? config;
+      final savedId =
+          await PrinterPreferences.getLastConnectedPrinterId(tenantId);
+      if (savedId != null) {
+        config = await _printerDb.getPrinterConfigById(savedId);
+      }
+
+      config ??=
+          await _printerDb.getDefaultPrinterConfigByTenant(tenantId);
+
+      var toConnect = config;
+      if (toConnect == null) return false;
+
+      if (toConnect.type == PrinterType.virtual && !kDebugMode) {
+        final printers =
+            await _printerDb.getPrinterConfigsByTenant(tenantId);
+        PrinterConfig? physical;
+        for (final p in printers) {
+          if (p.type != PrinterType.virtual) {
+            physical = p;
+            break;
+          }
+        }
+        if (physical == null) return false;
+        toConnect = physical;
+      }
+
+      return await setActivePrinter(toConnect);
     } catch (e) {
       _lastError = e.toString();
       notifyListeners();
@@ -102,15 +165,21 @@ class PrinterService extends ChangeNotifier {
       _lastError = null;
       notifyListeners();
 
-      // 生成打印数据
-      final bytes = await _receiptGenerator.generateReceipt(
-        receipt,
-        _activePrinter!,
-      );
+      // Generate print data
+      final protocol = _activePrinter!.protocol;
+      final bytes = protocol == PrinterProtocol.tsplLabel
+          ? _tsplGenerator.generateReceipt(receipt, _activePrinter!)
+          : await _receiptGenerator.generateReceipt(receipt, _activePrinter!);
 
-      final success = await _sendToPrinter(bytes);
+      final success = await _sendToPrinter(bytes).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          _lastError = 'Print timed out — tap Print again or reconnect printer';
+          return false;
+        },
+      );
       if (!success) {
-        _lastError = 'Print failed';
+        _lastError ??= 'Print failed';
       }
       return success;
     } catch (e) {
@@ -123,14 +192,17 @@ class PrinterService extends ChangeNotifier {
   }
 
   Future<bool> _sendToPrinter(List<int> bytes) async {
+    final lineOriented =
+        _activePrinter!.protocol == PrinterProtocol.tsplLabel;
     switch (_activePrinter!.type) {
       case PrinterType.bluetooth:
-        return _bluetoothManager.print(bytes);
+        return _bluetoothManager.print(bytes, lineOriented: lineOriented);
       case PrinterType.virtual:
         return _virtualManager.print(bytes);
       case PrinterType.network:
-      case PrinterType.usb:
         return _networkManager.print(bytes);
+      case PrinterType.usb:
+        return _usbManager.print(bytes);
     }
   }
 
@@ -142,15 +214,29 @@ class PrinterService extends ChangeNotifier {
       return false;
     }
 
+    if (_isPrinting) {
+      _lastError = 'Printer is busy';
+      notifyListeners();
+      return false;
+    }
+
     try {
       _isPrinting = true;
       _lastError = null;
       notifyListeners();
 
-      // 生成测试打印数据
-      final bytes = await _receiptGenerator.generateTestReceipt(_activePrinter!);
+      final protocol = _activePrinter!.protocol;
+      final bytes = protocol == PrinterProtocol.tsplLabel
+          ? _tsplGenerator.generateTestReceipt(_activePrinter!)
+          : await _receiptGenerator.generateTestReceipt(_activePrinter!);
 
-      final success = await _sendToPrinter(bytes);
+      final success = await _sendToPrinter(bytes).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          _lastError = 'Test print timed out';
+          return false;
+        },
+      );
       if (!success) {
         _lastError = 'Test print failed';
       }
@@ -184,8 +270,10 @@ class PrinterService extends ChangeNotifier {
           await _virtualManager.disconnect();
           break;
         case PrinterType.network:
-        case PrinterType.usb:
           await _networkManager.disconnect();
+          break;
+        case PrinterType.usb:
+          await _usbManager.disconnect();
           break;
       }
     } catch (e) {

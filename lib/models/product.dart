@@ -73,8 +73,11 @@ class Product {
     required this.updatedAt,
   });
 
-  factory Product.fromJson(Map<String, dynamic> json) =>
-      _$ProductFromJson(json);
+  factory Product.fromJson(Map<String, dynamic> json) {
+    final normalized = Map<String, dynamic>.from(json);
+    normalized['_id'] ??= json['id'];
+    return _$ProductFromJson(normalized);
+  }
 
   Map<String, dynamic> toJson() => _$ProductToJson(this);
 

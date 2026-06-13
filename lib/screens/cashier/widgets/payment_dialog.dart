@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../../config/app_config.dart';
+import '../../../config/navigate_printer_settings.dart';
 import '../../../config/theme.dart';
 import '../../../models/transaction.dart';
 import '../../../models/receipt.dart';
@@ -178,7 +179,7 @@ class _PaymentDialogState extends ConsumerState<PaymentDialog> {
                 cartNotifier.clear();
                 widget.onPaymentComplete();
               },
-              onPrinterSettings: null, // TODO: Add navigation to printer settings
+              onPrinterSettings: () => openPrinterSettings(context),
             ),
           );
         }
